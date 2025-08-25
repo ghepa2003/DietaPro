@@ -6,26 +6,41 @@ from openpyxl import load_workbook
 
 app = Flask(__name__)
 
-# carica DB all'avvio: preferisci un unico file excel con 5 fogli
+# Base directory for data files (supports env override)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.environ.get("DIETAPRO_DATA_DIR", BASE_DIR)
+
+"""Percorso del file Excel degli alimenti
+Ordine di risoluzione:
+- Se esiste DIETAPRO_DATA_DIR, cerca lì.
+- Altrimenti, cerca nella cartella del file app.py.
+Preferisce .xlsm, poi .xlsx. Ritorna percorso assoluto.
+"""
 def _excel_file_path():
     # supporta .xlsm (macro) o .xlsx, preferendo .xlsm se presente
-    if os.path.isfile('alimenti.xlsm'):
-        return 'alimenti.xlsm'
-    if os.path.isfile('alimenti.xlsx'):
-        return 'alimenti.xlsx'
-    # fallback: prendi il primo .xlsm o .xlsx nella cartella
-    files = [f for f in os.listdir('.') if f.lower().endswith(('.xlsm', '.xlsx'))]
-    # preferisci .xlsm
-    files.sort(key=lambda x: (0 if x.lower().endswith('.xlsm') else 1, x.lower()))
+    candidates = []
+    for name in ("alimenti.xlsm", "alimenti.xlsx"):
+        p = os.path.join(DATA_DIR, name)
+        if os.path.isfile(p):
+            return p
+    # fallback: primo .xlsm/.xlsx presente nella DATA_DIR
+    try:
+        files = [f for f in os.listdir(DATA_DIR) if f.lower().endswith((".xlsm", ".xlsx"))]
+    except Exception:
+        files = []
+    files.sort(key=lambda x: (0 if x.lower().endswith(".xlsm") else 1, x.lower()))
     if files:
         print(f"Using Excel file: {files[0]}")
-        return files[0]
-    return 'alimenti.xlsx'
+        return os.path.join(DATA_DIR, files[0])
+    # di default ritorna percorso atteso di alimenti.xlsx nella DATA_DIR
+    return os.path.join(DATA_DIR, "alimenti.xlsx")
 
 def load_dbs():
     excel_file = _excel_file_path()
     if not os.path.isfile(excel_file):
-        raise FileNotFoundError(f"File '{excel_file}' non trovato. Crea un workbook con fogli 'carboidrati','proteine','grassi','frutta','verdura'.")
+        # In produzione non fallire all'import: restituisci DB vuoti e mostra warning
+        print(f"[WARN] File Excel non trovato: {excel_file}. L'app partirà con database vuoti.")
+        return ({}, {}, {}, {}, {})
     xls = pd.read_excel(excel_file, sheet_name=['carboidrati','proteine','grassi','frutta','verdura'])
 
     def df_to_db(df):
@@ -472,5 +487,21 @@ def compute_day():
         "daily_per_food": daily_per_food
     })
 
+@app.get("/healthz")
+def healthz():
+    try:
+        # minimal check: DBs loaded and template exists
+        _ = build_foods_by_category()
+        return {"ok": True}, 200
+    except Exception as e:
+        return {"ok": False, "error": str(e)}, 500
+
 if __name__ == "__main__":
-    app.run(debug=True, host="127.0.0.1", port=5000)
+    # Avvio locale/standalone: usa env o default
+    debug = (os.environ.get("FLASK_DEBUG", "0") == "1")
+    host = os.environ.get("HOST", "0.0.0.0")
+    try:
+        port = int(os.environ.get("PORT", "5000"))
+    except Exception:
+        port = 5000
+    app.run(debug=debug, host=host, port=port)
