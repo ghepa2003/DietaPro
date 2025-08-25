@@ -4,7 +4,7 @@ import os
 import pandas as pd
 from openpyxl import load_workbook
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates'))
 
 # Base directory for data files (supports env override)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
