@@ -1,14 +1,21 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from DietaProg_functions import importa_db, calcola_dieta, bilancia_conservando_macros, calcola_calorie, verifica_pasto
 import os
 import pandas as pd
 from openpyxl import load_workbook
 
+
 app = Flask(__name__, template_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates'))
+# Secret key for session management (override in env for production)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-change-me")
 
 # Base directory for data files (supports env override)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DIETAPRO_DATA_DIR", BASE_DIR)
+
+# Directory for per-user persisted state
+USER_DATA_DIR = os.path.join(DATA_DIR, "user_data")
+os.makedirs(USER_DATA_DIR, exist_ok=True)
 
 """Percorso del file Excel degli alimenti
 Ordine di risoluzione:
@@ -72,14 +79,6 @@ def load_dbs():
         df_to_db(xls.get('verdura'))
     )
 
-    # fallback: mantieni import CSV per compatibilità
-    return (
-        importa_db(filepath="carboidrati.csv"),
-        importa_db(filepath="proteine.csv"),
-        importa_db(filepath="grassi.csv"),
-        importa_db(filepath="frutta.csv"),
-        importa_db(filepath="verdura.csv")
-    )
 
 # esegui load
 carbo_db, prot_db, grassi_db, frutta_db, verdura_db = load_dbs()
@@ -97,6 +96,90 @@ print(f"  proteine:    {_count_db(prot_db)} items")
 print(f"  grassi:      {_count_db(grassi_db)} items")
 print(f"  frutta:      {_count_db(frutta_db)} items")
 print(f"  verdura:     {_count_db(verdura_db)} items")
+
+# ====== Simple username-only login and per-user state helpers ======
+def _sanitize_username(u: str) -> str:
+    u = (u or "").strip()
+    # allow alphanumerics, underscore, hyphen, dot
+    allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
+    return "".join(ch for ch in u if ch in allowed)[:64]
+
+def _user_state_path(username: str) -> str:
+    safe = _sanitize_username(username)
+    return os.path.join(USER_DATA_DIR, f"{safe}.json")
+
+def load_user_state(username: str) -> dict:
+    try:
+        p = _user_state_path(username)
+        if os.path.isfile(p):
+            import json
+            with open(p, "r", encoding="utf-8") as f:
+                return json.load(f) or {}
+    except Exception as e:
+        print(f"[WARN] load_user_state failed for {username}: {e}")
+    return {}
+
+def save_user_state(username: str, data: dict) -> None:
+    try:
+        p = _user_state_path(username)
+        import json
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(data or {}, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[WARN] save_user_state failed for {username}: {e}")
+
+@app.before_request
+def require_login():
+    # allow public endpoints
+    public_paths = {"/login", "/healthz"}
+    if request.path.startswith("/static/"):
+        return None
+    if request.path in public_paths:
+        return None
+    if request.method == "GET" and request.path == "/":
+        # index requires login
+        if not session.get("username"):
+            return redirect(url_for("login", next=request.url))
+        return None
+    # APIs and compute endpoints can be used without login, but if username exists it's used
+    return None
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = _sanitize_username((request.form.get("username") or request.json.get("username") if request.is_json else "") )
+        if not username:
+            # render with error
+            err = "Inserisci un nome utente valido"
+            return render_template("login.html", error=err), 400
+        session["username"] = username
+        nxt = request.args.get("next") or url_for("index")
+        return redirect(nxt)
+    return render_template("login.html")
+
+@app.route("/logout", methods=["POST", "GET"])
+def logout():
+    session.pop("username", None)
+    return redirect(url_for("login"))
+
+@app.route("/api/user/state", methods=["GET", "POST"])
+def user_state_api():
+    username = session.get("username")
+    if not username:
+        return jsonify({"error": "not authenticated"}), 401
+    if request.method == "GET":
+        data = load_user_state(username)
+        return jsonify({"username": username, "state": data})
+    # POST save
+    payload = request.get_json() or {}
+    # keep only known keys to avoid bloat
+    allowed_keys = {
+        "calorie_tot","perc_pasti","macro_tot","macro_pasti",
+        "choices","fruit_ratios","veg_ratios","splits_per_meal"
+    }
+    cleaned = {k: payload.get(k) for k in allowed_keys if k in payload}
+    save_user_state(username, cleaned)
+    return jsonify({"ok": True})
 
 # endpoint per aggiungere un alimento e salvarlo direttamente nel file excel
 @app.route("/add_food", methods=["POST"])
@@ -288,7 +371,42 @@ def index():
             "cena": {"carbo": 0.45, "prot": 0.35, "fat": 0.20},
         }
     }
-    return render_template("index.html", foods_by_cat=foods_by_cat, defaults=defaults, MEALS=MEALS)
+    username = session.get("username")
+    meal_choices = None
+    splits_per_meal = None
+    if username:
+        state = load_user_state(username)
+        # merge defaults with user state
+        if isinstance(state.get("calorie_tot"), (int, float)):
+            defaults["calorie_tot"] = state["calorie_tot"]
+        if isinstance(state.get("perc_pasti"), dict):
+            defaults["perc_pasti"].update(state["perc_pasti"])
+        if isinstance(state.get("macro_tot"), dict):
+            defaults["macro_tot"].update(state["macro_tot"])
+        if isinstance(state.get("macro_pasti"), dict):
+            for m, cfg in state["macro_pasti"].items():
+                if m in defaults["macro_pasti"] and isinstance(cfg, dict):
+                    defaults["macro_pasti"][m].update(cfg)
+        # prefill meal choices and splits
+        if isinstance(state.get("choices"), dict):
+            meal_choices = state["choices"]
+        if isinstance(state.get("splits_per_meal"), dict):
+            spm = {}
+            for m, val in state["splits_per_meal"].items():
+                if isinstance(val, list):
+                    spm[m] = val
+                elif isinstance(val, str):
+                    spm[m] = val.splitlines()
+            splits_per_meal = spm
+    return render_template(
+        "index.html",
+        foods_by_cat=foods_by_cat,
+        defaults=defaults,
+        MEALS=MEALS,
+        username=username,
+        meal_choices=meal_choices,
+        splits_per_meal=splits_per_meal,
+    )
 
 @app.route("/compute_meal", methods=["POST"])
 def compute_meal():

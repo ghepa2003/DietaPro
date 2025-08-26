@@ -20,6 +20,9 @@
   </head>
   <body>
     <h1>DietaPro - Pianificazione giornaliera</h1>
+    {% if username %}
+      <p>Utente: <strong>{{ username }}</strong> — <a href="{{ url_for('logout') }}">Logout</a></p>
+    {% endif %}
 
     <!-- non mette action: tutto via AJAX -->
     <form id="mainForm" onsubmit="return false;">
@@ -117,8 +120,10 @@
       </div>
       {% endfor %}
 
-      <p style="margin-top:10px;">
+      <p style="margin-top:10px; display:flex; gap:8px; align-items:center;">
         <button type="button" onclick="calcDay()">Calcola giornata </button>
+        <button type="button" id="btn_save_state">Salva impostazioni utente</button>
+        <span id="save_state_status" style="margin-left:8px"></span>
       </p>
     </form>
 
@@ -126,11 +131,13 @@
 
     <script>
       (function(){
-        const foodsByCat = JSON.parse('{{ foods_by_cat|tojson | safe if foods_by_cat is defined else "{}" }}');
-        const computeMealUrl = "{{ url_for('compute_meal') }}";
-        const computeDayUrl  = "{{ url_for('compute_day') }}";
-        const addFoodUrl     = "{{ url_for('add_food') }}";
-        const getFoodUrl     = "{{ url_for('get_food') }}";
+  const foodsByCat = JSON.parse('{{ foods_by_cat|tojson | safe if foods_by_cat is defined else "{}" }}');
+  const USERNAME = "{{ username or '' }}";
+  const computeMealUrl = "{{ url_for('compute_meal') }}";
+  const computeDayUrl  = "{{ url_for('compute_day') }}";
+  const addFoodUrl     = "{{ url_for('add_food') }}";
+  const getFoodUrl     = "{{ url_for('get_food') }}";
+  const userStateUrl   = "{{ url_for('user_state_api') }}";
         window.MEALS = JSON.parse('{{ MEALS|tojson | safe }}');
 
         // autocomplete helpers
@@ -265,7 +272,7 @@
           });
           return out;
         }
-        function readMacroPasti(){
+  function readMacroPasti(){
           const out = {};
           (window.MEALS || []).forEach(function(m){
             out[m] = {
@@ -461,8 +468,9 @@
 
         // === Persistenza locale dei dati iniziali (localStorage) ===
         function persistKeyFor(el){
-          if(el.name && el.name.trim()) return 'persist:name:' + el.name.trim();
-          if(el.id && el.id.trim())     return 'persist:id:' + el.id.trim();
+          const ns = USERNAME ? ('user:' + USERNAME + ':') : '';
+          if(el.name && el.name.trim()) return 'persist:' + ns + 'name:' + el.name.trim();
+          if(el.id && el.id.trim())     return 'persist:' + ns + 'id:' + el.id.trim();
           return null;
         }
         function restorePersisted(){
@@ -494,7 +502,7 @@
           });
         }
 
-        // Ripristina subito i valori salvati e attiva il salvataggio automatico
+  // Ripristina subito i valori salvati e attiva il salvataggio automatico
         restorePersisted();
         attachPersistHandlers();
 
@@ -503,6 +511,39 @@
         // assicurati che non ci sia testo residuo nei totali o nelle liste per pasto
         document.querySelectorAll('[id^="totals_"]').forEach(el => { el.innerHTML = ''; });
         document.querySelectorAll('[id^="perfood_"]').forEach(el => { el.innerHTML = ''; });
+
+        // Salvataggio stato utente lato server (sessione utente)
+        async function saveUserState(){
+          const status = document.getElementById('save_state_status');
+          status.textContent = '';
+          const payload = {
+            calorie_tot: parseFloat(document.getElementById('calorie_tot').value) || 2000,
+            perc_pasti: readPercPasti(),
+            macro_tot: {
+              carbo: parseFloat(document.getElementById('macro_tot_carbo').value) || 0.5,
+              prot:  parseFloat(document.getElementById('macro_tot_prot').value) || 0.3,
+              fat:   parseFloat(document.getElementById('macro_tot_fat').value) || 0.2,
+            },
+            macro_pasti: readMacroPasti(),
+            choices: readAllChoices(),
+            fruit_ratios: (function(){ const o={}; (window.MEALS || []).forEach(function(m){ o[m] = parseFloat(document.querySelector('input[name="'+m+'_fruit_ratio"]').value) || 0; }); return o; })(),
+            veg_ratios:   (function(){ const o={}; (window.MEALS || []).forEach(function(m){ o[m] = parseFloat(document.querySelector('input[name="'+m+'_veg_ratio"]').value) || 0; }); return o; })(),
+            splits_per_meal: (function(){ const o={}; (window.MEALS || []).forEach(function(m){ o[m] = document.getElementById('splits_' + m).value || ''; }); return o; })(),
+          };
+          try{
+            const r = await fetch(userStateUrl, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+            const data = await r.json();
+            if(!r.ok || data.error){ throw new Error(data.error || 'Errore salvataggio'); }
+            status.textContent = 'Impostazioni salvate';
+            status.style.color = 'green';
+          }catch(e){
+            console.error(e);
+            status.textContent = 'Errore salvataggio';
+            status.style.color = 'red';
+          }
+        }
+        const btnSave = document.getElementById('btn_save_state');
+        if(btnSave){ btnSave.addEventListener('click', saveUserState); }
       })();
     </script>
   </body>
