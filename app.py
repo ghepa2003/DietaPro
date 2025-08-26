@@ -385,8 +385,8 @@ def index():
         }
     }
     username = session.get("username")
-    meal_choices = None
-    splits_per_meal = None
+    meal_choices = {}
+    splits_per_meal = {}
     if username:
         state = load_user_state(username)
         # merge defaults with user state
@@ -402,7 +402,7 @@ def index():
                     defaults["macro_pasti"][m].update(cfg)
         # prefill meal choices and splits
         if isinstance(state.get("choices"), dict):
-            meal_choices = state["choices"]
+            meal_choices = state["choices"] or {}
         if isinstance(state.get("splits_per_meal"), dict):
             spm = {}
             for m, val in state["splits_per_meal"].items():

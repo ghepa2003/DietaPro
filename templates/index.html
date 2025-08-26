@@ -100,13 +100,13 @@
           <label>{{ cat }}:
             <div class="suggestions">
               <input class="food-input" data-cat="{{cat}}" id="{{m}}_{{cat}}"  {% if cat =='carboidrati' %} placeholder="es. riso, pasta"  {% elif cat == 'proteine' %} placeholder="es. pollo, tonno" {% elif cat == 'frutta' %} placeholder="es. mela, banana" {% elif cat == 'verdura' %} placeholder="es. insalata, broccoli" {% elif cat == 'grassi' %} placeholder="es. olio, burro" {% endif %} autocomplete="off"
-                value="{{ (','.join(meal_choices[m][cat]) if meal_choices is defined and m in meal_choices else '') }}">
+                value="{{ (','.join((meal_choices.get(m, {}) or {}).get(cat, [])) if meal_choices is defined else '') }}">
             </div>
           </label>
         {% endfor %}
 
         <label>Split per questo pasto (una per riga, es. "riso,pane=50" o "uova,noci=70,30" — non includere frutta/verdura)</label>
-        <textarea id="splits_{{m}}" rows="2" cols="60">{{ splits_per_meal[m]|join('\n') if splits_per_meal is defined and m in splits_per_meal else '' }}</textarea>
+  <textarea id="splits_{{m}}" rows="2" cols="60">{{ (splits_per_meal.get(m) or [])|join('\n') if splits_per_meal is defined else '' }}</textarea>
 
         <div style="margin-top:8px">
           <button type="button" onclick="calcSingle('{{m}}')">Calcola solo questo pasto </button>
