@@ -78,7 +78,7 @@ def calcola_target(calorie_tot, perc_macro):
     return carb_target, prot_target, fat_target
 
 
-def calcola_dieta(calorie_pasto, perc_macro, scelta, carbo_db, prot_db, grassi_db, frutta_db, verdura_db, fruit_ratio=0.1, veg_ratio=0.1):
+def calcola_dieta(calorie_pasto, perc_macro, scelta, carbo_db, prot_db, grassi_db, frutta_db, verdura_db, fruit_ratio=0.1, veg_ratio=0.1, min_ratio: float = 0.05):
     """
     Calcola i grammi di alimenti scelti per un pasto.
     - calorie_pasto: kcal totali del pasto
@@ -102,15 +102,16 @@ def calcola_dieta(calorie_pasto, perc_macro, scelta, carbo_db, prot_db, grassi_d
     # costruisco lista di alimenti principali includendo anche la frutta
     food_list = []
     food_db_list = []
+    food_origin = []  # 'carboidrati' | 'proteine' | 'grassi' | 'frutta'
     for f in scelta.get("carboidrati", []):
-        food_list.append(f); food_db_list.append(carbo_db)
+        food_list.append(f); food_db_list.append(carbo_db); food_origin.append("carboidrati")
     for f in scelta.get("proteine", []):
-        food_list.append(f); food_db_list.append(prot_db)
+        food_list.append(f); food_db_list.append(prot_db); food_origin.append("proteine")
     for f in scelta.get("grassi", []):
-        food_list.append(f); food_db_list.append(grassi_db)
+        food_list.append(f); food_db_list.append(grassi_db); food_origin.append("grassi")
     # includi frutta nella risoluzione (se presente)
     for f in scelta.get("frutta", []):
-        food_list.append(f); food_db_list.append(frutta_db)
+        food_list.append(f); food_db_list.append(frutta_db); food_origin.append("frutta")
 
     if not food_list:
         raise ValueError("Devi selezionare almeno un alimento tra carboidrati, proteine o grassi.")
@@ -141,8 +142,40 @@ def calcola_dieta(calorie_pasto, perc_macro, scelta, carbo_db, prot_db, grassi_d
     else:
         A = A_macros
 
-    # risolvo il problema least-squares con vincolo non negativo
-    res = lsq_linear(A, b, bounds=(0, np.inf))
+    # vincoli di partecipazione minima: ogni alimento principale (carbo/prot/grassi)
+    # deve contribuire almeno a min_ratio delle calorie della parte principale
+    MIN_RATIO = max(0.0, min(0.5, float(min_ratio)))
+    CAP_RATIO = 0.90  # cap sulla somma dei minimi per stabilità
+    n = len(food_list)
+    lb = np.zeros(n, dtype=float)
+    # kcal per grammo
+    kpg = np.array(kcal_per_g_list, dtype=float)
+    is_main = np.array([orig in ("carboidrati","proteine","grassi") for orig in food_origin], dtype=bool)
+    is_fruit = np.array([orig == "frutta" for orig in food_origin], dtype=bool)
+    # min kcal per ciascun gruppo
+    min_kcal_main = np.where(is_main, MIN_RATIO * calorie_for_macros, 0.0)
+    total_min_main = float(min_kcal_main.sum())
+    cap_main = CAP_RATIO * max(0.0, float(calorie_for_macros))
+    scale_main = 1.0
+    if total_min_main > cap_main and total_min_main > 0:
+        scale_main = cap_main / total_min_main
+    min_kcal_main *= scale_main
+
+    min_kcal_fruit = np.where(is_fruit, MIN_RATIO * calorie_fruit, 0.0)
+    total_min_fruit = float(min_kcal_fruit.sum())
+    cap_fruit = CAP_RATIO * max(0.0, float(calorie_fruit))
+    scale_fruit = 1.0
+    if total_min_fruit > cap_fruit and total_min_fruit > 0:
+        scale_fruit = cap_fruit / total_min_fruit
+    min_kcal_fruit *= scale_fruit
+
+    min_kcal_each = min_kcal_main + min_kcal_fruit
+    # converti in grammi: g = kcal / (kcal/g)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        lb = np.where((is_main) & (kpg > 0), min_kcal_each / kpg, 0.0)
+
+    # risolvo il problema least-squares con vincoli lb <= x
+    res = lsq_linear(A, b, bounds=(lb, np.inf))
     sol = res.x  # grammi per ciascun alimento in food_list
 
     # distribuzione verdura (rimane come prima)
@@ -166,7 +199,7 @@ def stampa_risultati(pasto, scelti, sol, quant_frutta, quant_verdura):
     # frutta/verdura output removed (handled in web UI)
 
 
-def bilancia_conservando_macros(food_list, sol, splits, carbo_db, prot_db, grassi_db, frutta_db, verdura_db):
+def bilancia_conservando_macros(food_list, sol, splits, carbo_db, prot_db, grassi_db, frutta_db, verdura_db, min_ratio: float = 0.05):
     """
     Impone gli split (come rapporto di kcal tra coppie) mantenendo i vincoli globali sui macronutrienti.
     - food_list: lista nomi alimenti (nell'ordine di 'sol')
@@ -204,6 +237,7 @@ def bilancia_conservando_macros(food_list, sol, splits, carbo_db, prot_db, grass
     n = len(food_list)
     A_cols = []
     kcal_per_g = np.zeros(n, dtype=float)
+    food_origin = []
     for i, name in enumerate(food_list):
         db = find_db(name)
         nut = db[name]
@@ -214,6 +248,18 @@ def bilancia_conservando_macros(food_list, sol, splits, carbo_db, prot_db, grass
         ]) / 100.0
         A_cols.append(col)
         kcal_per_g[i] = float(nut.get("calorie", 0.0)) / 100.0
+        if name in carbo_db:
+            food_origin.append("carboidrati")
+        elif name in prot_db:
+            food_origin.append("proteine")
+        elif name in grassi_db:
+            food_origin.append("grassi")
+        elif frutta_db and name in frutta_db:
+            food_origin.append("frutta")
+        elif verdura_db and name in verdura_db:
+            food_origin.append("verdura")
+        else:
+            food_origin.append("altro")
     A = np.column_stack(A_cols)  # (3 x n)
     b = A.dot(np.array(sol, dtype=float))  # target macro totali
 
@@ -238,6 +284,35 @@ def bilancia_conservando_macros(food_list, sol, splits, carbo_db, prot_db, grass
         # assumiamo input corretto 0<alpha<1; clamp minimo per stabilità
         return max(1e-9, min(1 - 1e-9, f))
 
+    # vincoli minimi per alimento (solo principali): almeno 5% delle kcal totali della parte principale
+    MIN_RATIO = max(0.0, min(0.5, float(min_ratio)))
+    CAP_RATIO = 0.90
+    is_main = np.array([o in ("carboidrati","proteine","grassi") for o in food_origin], dtype=bool)
+    is_fruit = np.array([o == "frutta" for o in food_origin], dtype=bool)
+    total_kcal_main = float(np.dot(kcal_per_g, np.array(sol, dtype=float) * (is_main.astype(float))))
+    if total_kcal_main <= 0:
+        total_kcal_main = float(np.dot(kcal_per_g, np.array(sol, dtype=float)))
+    min_kcal_main = np.where(is_main, MIN_RATIO * total_kcal_main, 0.0)
+    total_min_main = float(min_kcal_main.sum())
+    cap_main = CAP_RATIO * total_kcal_main if total_kcal_main > 0 else 0.0
+    scale_main = 1.0
+    if total_kcal_main > 0 and total_min_main > cap_main and total_min_main > 0:
+        scale_main = cap_main / total_min_main
+    min_kcal_main *= scale_main
+
+    total_kcal_fruit = float(np.dot(kcal_per_g, np.array(sol, dtype=float) * (is_fruit.astype(float))))
+    min_kcal_fruit = np.where(is_fruit, MIN_RATIO * total_kcal_fruit, 0.0)
+    total_min_fruit = float(min_kcal_fruit.sum())
+    cap_fruit = CAP_RATIO * total_kcal_fruit if total_kcal_fruit > 0 else 0.0
+    scale_fruit = 1.0
+    if total_kcal_fruit > 0 and total_min_fruit > cap_fruit and total_min_fruit > 0:
+        scale_fruit = cap_fruit / total_min_fruit
+    min_kcal_fruit *= scale_fruit
+
+    min_kcal_each = min_kcal_main + min_kcal_fruit
+    # lb in grammi per x
+    lb_x = np.where((is_main) & (kcal_per_g > 0), min_kcal_each / kcal_per_g, 0.0)
+
     # costruisci la trasformazione M: x = M·y
     # - per ogni coppia (i,j,alpha): una colonna che rappresenta i kcal totali della coppia
     #   x_i = (alpha / k_i) * y, x_j = ((1 - alpha) / k_j) * y
@@ -245,6 +320,8 @@ def bilancia_conservando_macros(food_list, sol, splits, carbo_db, prot_db, grass
     assigned = set()
     cols = []
     applied = []
+    # per bounds su y
+    lb_y_list = []
 
     for key, val in splits.items():
         a_name, b_name = parse_pair(key)
@@ -260,24 +337,33 @@ def bilancia_conservando_macros(food_list, sol, splits, carbo_db, prot_db, grass
         col[ia] = alpha / ka
         col[ib] = (1.0 - alpha) / kb
         cols.append(col)
-        assigned.add(ia); assigned.add(ib)
+        assigned.add(ia)
+        assigned.add(ib)
         applied.append({
             "pair": (food_list[ia], food_list[ib]),
             "alpha": float(alpha)
         })
+        # lower bound su y per rispettare lb_x su entrambe le componenti
+        # x_i = (alpha/ka)*y >= lb_x[i]  => y >= lb_x[i]*ka/alpha
+        # x_j = ((1-alpha)/kb)*y >= lb_x[j] => y >= lb_x[j]*kb/(1-alpha)
+        ya = (lb_x[ia] * ka / max(alpha, 1e-9))
+        yb = (lb_x[ib] * kb / max(1.0 - alpha, 1e-9))
+        lb_y_list.append(max(0.0, ya, yb))
 
     for i in range(n):
         if i in assigned:
             continue
         col = np.zeros(n, dtype=float)
         col[i] = 1.0
-        cols.append(col)
+    cols.append(col)
+    lb_y_list.append(max(0.0, lb_x[i]))
 
     M = np.column_stack(cols) if cols else np.eye(n)
     A_red = A.dot(M)
 
     # risolvo per y imponendo non negatività
-    res = lsq_linear(A_red, b, bounds=(0, np.inf))
+    lb_y = np.array(lb_y_list, dtype=float) if lb_y_list else 0.0
+    res = lsq_linear(A_red, b, bounds=(lb_y, np.inf))
     y = res.x
     new_sol = M.dot(y)
 

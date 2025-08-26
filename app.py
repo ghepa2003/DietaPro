@@ -188,7 +188,7 @@ def user_state_api():
     # keep only known keys to avoid bloat
     allowed_keys = {
         "calorie_tot","perc_pasti","macro_tot","macro_pasti",
-        "choices","fruit_ratios","veg_ratios","splits_per_meal"
+    "choices","fruit_ratios","veg_ratios","splits_per_meal","min_ratio"
     }
     cleaned = {k: payload.get(k) for k in allowed_keys if k in payload}
     save_user_state(username, cleaned)
@@ -382,7 +382,8 @@ def index():
             "colazione": {"carbo": 0.45, "prot": 0.25, "fat": 0.30},
             "pranzo": {"carbo": 0.55, "prot": 0.30, "fat": 0.15},
             "cena": {"carbo": 0.45, "prot": 0.35, "fat": 0.20},
-        }
+    },
+    "min_ratio": 0.05,
     }
     username = session.get("username")
     meal_choices = {}
@@ -411,6 +412,13 @@ def index():
                 elif isinstance(val, str):
                     spm[m] = val.splitlines()
             splits_per_meal = spm
+        # min_ratio
+        try:
+            mr = float(state.get("min_ratio"))
+            if 0.0 <= mr <= 0.5:
+                defaults["min_ratio"] = mr
+        except Exception:
+            pass
     return render_template(
         "index.html",
         foods_by_cat=foods_by_cat,
@@ -439,6 +447,10 @@ def compute_meal():
     choices = data.get("choices", {"carboidrati": [], "proteine": [], "grassi": [], "frutta": [], "verdura": []})
     fruit_ratio = float(data.get("fruit_ratio", 0.0))
     veg_ratio = float(data.get("veg_ratio", 0.0))
+    try:
+        min_ratio = float(data.get("min_ratio", 0.05))
+    except Exception:
+        min_ratio = 0.05
     splits_text = data.get("splits_text", "")
 
     local_splits = parse_splits(splits_text)
@@ -448,10 +460,11 @@ def compute_meal():
         carbo_db=carbo_db, prot_db=prot_db, grassi_db=grassi_db,
         frutta_db=frutta_db, verdura_db=verdura_db,
         fruit_ratio=fruit_ratio, veg_ratio=veg_ratio
+        , min_ratio=min_ratio
     )
 
     if local_splits:
-        sol_bilanciata, info = bilancia_conservando_macros(scelti, sol, local_splits, carbo_db, prot_db, grassi_db, frutta_db, verdura_db)
+        sol_bilanciata, info = bilancia_conservando_macros(scelti, sol, local_splits, carbo_db, prot_db, grassi_db, frutta_db, verdura_db, min_ratio=min_ratio)
     else:
         sol_bilanciata = sol.copy() if hasattr(sol, "copy") else sol
         info = {"skipped": True}
@@ -528,6 +541,10 @@ def compute_day():
     fruit_ratios = data.get("fruit_ratios", {}) or {}
     veg_ratios = data.get("veg_ratios", {}) or {}
     splits_per_meal_raw = data.get("splits_per_meal", {}) or {}
+    try:
+        min_ratio = float(data.get("min_ratio", 0.05))
+    except Exception:
+        min_ratio = 0.05
 
     results = {}
     total_day = {"kcal": 0.0, "carbo": 0.0, "proteine": 0.0, "grassi": 0.0}
@@ -548,11 +565,11 @@ def compute_day():
             cal_pasto, macro_for_meal, choices,
             carbo_db=carbo_db, prot_db=prot_db, grassi_db=grassi_db,
             frutta_db=frutta_db, verdura_db=verdura_db,
-            fruit_ratio=fruit_ratio, veg_ratio=veg_ratio
+            fruit_ratio=fruit_ratio, veg_ratio=veg_ratio, min_ratio=min_ratio
         )
 
         if local_splits:
-            sol_bilanciata, info = bilancia_conservando_macros(scelti, sol, local_splits, carbo_db, prot_db, grassi_db, frutta_db, verdura_db)
+            sol_bilanciata, info = bilancia_conservando_macros(scelti, sol, local_splits, carbo_db, prot_db, grassi_db, frutta_db, verdura_db, min_ratio=min_ratio)
         else:
             sol_bilanciata = sol.copy() if hasattr(sol, "copy") else sol
             info = {"skipped": True}
