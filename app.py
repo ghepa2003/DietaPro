@@ -99,10 +99,18 @@ print(f"  verdura:     {_count_db(verdura_db)} items")
 
 # ====== Simple username-only login and per-user state helpers ======
 def _sanitize_username(u: str) -> str:
+    import re
+    import unicodedata
     u = (u or "").strip()
-    # allow alphanumerics, underscore, hyphen, dot
-    allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
-    return "".join(ch for ch in u if ch in allowed)[:64]
+    # Normalize accents (é -> e), keep ASCII only
+    u = unicodedata.normalize("NFKD", u).encode("ascii", "ignore").decode("ascii")
+    # Replace whitespace with single hyphen
+    u = re.sub(r"\s+", "-", u)
+    # Keep only allowed chars
+    u = re.sub(r"[^A-Za-z0-9._-]", "", u)
+    # collapse multiple hyphens
+    u = re.sub(r"-{2,}", "-", u)
+    return u[:64]
 
 def _user_state_path(username: str) -> str:
     safe = _sanitize_username(username)
@@ -147,9 +155,14 @@ def require_login():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        username = _sanitize_username((request.form.get("username") or request.json.get("username") if request.is_json else "") )
+        raw_username = None
+        if request.is_json:
+            body = request.get_json(silent=True) or {}
+            raw_username = body.get("username")
+        if raw_username is None:
+            raw_username = request.form.get("username")
+        username = _sanitize_username(raw_username)
         if not username:
-            # render with error
             err = "Inserisci un nome utente valido"
             return render_template("login.html", error=err), 400
         session["username"] = username
