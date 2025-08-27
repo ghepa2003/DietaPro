@@ -16,13 +16,73 @@
       .col{flex:1}
       #daily_totals_container{margin-top:12px;padding:8px;border:1px dashed #ccc}
       button{cursor:pointer}
+      .diag-block{margin-top:8px;padding:8px;border:1px solid #ddd;background:#fafafa}
+      .diag-warning{background:#fff7ed;border-color:#fde68a;color:#92400e}
+      .diag-ok{background:#ecfdf5;border-color:#a7f3d0;color:#065f46}
+      .diag-block ul{margin:6px 0 0 18px}
+      .diag-note{font-size:12px;color:#666}
     </style>
   </head>
   <body>
     <h1>DietaPro - Pianificazione giornaliera</h1>
+    <button id="helpBtn" style="margin-bottom:12px;">Guida / Aiuto</button>
     {% if username %}
       <p>Utente: <strong>{{ username }}</strong> — <a href="{{ url_for('logout') }}">Logout</a></p>
     {% endif %}
+
+    <!-- Help modal (hidden by default) -->
+    <div id="helpModal" aria-hidden="true" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:10000; align-items:center; justify-content:center;">
+      <div role="dialog" aria-modal="true" style="background:#fff; max-width:900px; width:94%; max-height:85%; overflow:auto; padding:20px; margin:20px; border-radius:6px; box-shadow:0 10px 30px rgba(0,0,0,0.3);">
+        <h2>Guida rapida a DietaPro</h2>
+        <p>Questa applicazione calcola la ripartizione degli alimenti per pasto in modo da raggiungere le calorie e le percentuali di macronutrienti desiderate.</p>
+
+        <h3>Flusso di utilizzo</h3>
+        <ol>
+          <li>Imposta le calorie giornaliere e le percentuali per ciascun pasto.</li>
+          <li>Per ogni pasto scegli gli alimenti principali (carboidrati, proteine, grassi). Se selezioni della frutta e vuoi che contribuisca alle calorie principali imposta il <em>fruit ratio</em>.</li>
+          <li>Usa <strong>Calcola solo questo pasto</strong> o <strong>Calcola giornata</strong> per ottenere le grammature suggerite.</li>
+        </ol>
+
+        <h3>La funzione di &quot;split&quot;</h3>
+        <p>Lo <em>split</em> ti permette di vincolare la ripartizione energetica (kcal) di due o tre alimenti fra loro. Esempi di sintassi (una regola per riga):</p>
+        <ul>
+          <li><code>riso,pane=50</code> — riso e pane dovranno dividersi le kcal della coppia in un rapporto 50% / 50% (semettere 50 significa 50%).</li>
+          <li><code>uova,noci=70,30</code> — uova 70% delle kcal della coppia, noci 30%.</li>
+          <li><code>pasta,avocado,prosciutto=50,30,20</code> — split a 3 elementi con le percentuali indicate (si normalizzano se non sommano a 100).</li>
+        </ul>
+        <p>Note importanti sullo split:</p>
+        <ul>
+          <li>Lo split agisce solo sugli alimenti principali (non includere frutta o verdura nel campo dello split).</li>
+          <li>Lo split introduce variabili di gruppo nel risolutore: questo può cambiare significativamente le grammature degli altri alimenti per rispettare contemporaneamente i vincoli sui macronutrienti.</li>
+          <li>Usa lo split quando vuoi fissare la percentuale relativa di energia tra quegli alimenti, ma verifica sempre i risultati: lo split è comodo, ma può alterare il risultato voluto se la combinazione non è compatibile con i target di macronutrienti.</li>
+        </ul>
+
+        <h3>Parametro &quot;Min grammi per alimento&quot; (min_grams)</h3>
+        <p>Questo valore impone un vincolo minimo esplicito (in grammi) per ogni alimento presente nella parte principale del pasto. Scopi principali:</p>
+        <ul>
+          <li>Protegge gli alimenti da azzeramenti numerici: quando si applicano split molto vincolanti alcuni alimenti possono risultare calcolati con 0 g — il valore <code>min_grams</code> evita che ciò accada sotto la soglia impostata.</li>
+          <li>È un vincolo semplice e deterministico: imposta una soglia (es. 20 g) e l'ottimizzatore cercherà soluzioni che rispettino almeno quel valore per ogni alimento.</li>
+        </ul>
+        <p>Attenzione: un valore di <code>min_grams</code> troppo alto può rendere impossibile soddisfare contemporaneamente gli obiettivi calorici e di macronutrienti. In tal caso il risolutore fornirà la soluzione migliore possibile ma i residui (differenze dai target) potrebbero aumentare.</p>
+
+        <h3>Consigli pratici</h3>
+        <ul>
+          <li>Prova con <code>min_grams</code> basso (5–20 g) e aumenta solo se osservi alimenti che vengono azzerati o diventano irrealistici.</li>
+          <li>Controlla sempre i totali per pasto dopo aver applicato uno split: verifica che le kcal e i macronutrienti siano ancora coerenti con le tue aspettative.</li>
+          <li>Usa lo split per migliorare il controllo su combinazioni che vuoi mantenere insieme (es. una fonte di grassi e una di proteine), ma fallo con moderazione e testa i risultati.</li>
+        </ul>
+
+        <h3>Alimenti con profilo macro misto</h3>
+        <p>Alcuni alimenti (es. prosciutto crudo, formaggi light, salmone) hanno un profilo “misto” e possono apportare molte kcal da grassi pur essendo inseriti in <em>proteine</em>. Questo può alterare i risultati se nel calcolo ci si aspetta che ogni categoria contribuisca a un solo macro.</p>
+        <ul>
+          <li>Il calcolo corretto deve usare sempre l’intero profilo C/P/F di ogni alimento (4/4/9 kcal) nei vincoli e nella funzione obiettivo.</li>
+          <li>Se un alimento in <em>proteine</em> ha molte kcal da grassi, valuta di spostarlo in <em>grassi</em> o di bilanciarlo con una fonte magra.</li>
+          <li>Usa “Diagnostica scelte” per evidenziare rapidamente gli alimenti “misti”.</li>
+        </ul>
+
+        <div style="text-align:right; margin-top:12px;"><button id="helpClose">Chiudi</button></div>
+      </div>
+    </div>
 
     <!-- non mette action: tutto via AJAX -->
     <form id="mainForm" onsubmit="return false;">
@@ -61,8 +121,9 @@
       <label>Calorie totali giornata
         <input id="calorie_tot" name="calorie_tot" value="{{ defaults.calorie_tot if defaults is defined else 2000 }}">
       </label>
-      <label>Min % per alimento principale (0-50)
-        <input id="min_ratio" name="min_ratio" type="number" step="0.1" min="0" max="50" value="{{ (defaults.min_ratio*100.0)|round(2) if defaults is defined and defaults.min_ratio is defined else 5 }}">
+  <!-- min_ratio removed: replaced by explicit min_grams setting -->
+      <label>Min grammi per alimento (protezione contro azzeramento)
+        <input id="min_grams" name="min_grams" type="number" step="1" min="0" value="{{ (defaults.min_grams if defaults is defined and defaults.min_grams is defined else 0) }}">
       </label>
 
       <div class="row">
@@ -109,16 +170,18 @@
         {% endfor %}
 
         <label>Split per questo pasto (una per riga, es. "riso,pane=50" o "uova,noci=70,30" — non includere frutta/verdura)</label>
-  <textarea id="splits_{{m}}" rows="2" cols="60">{{ (splits_per_meal.get(m) or [])|join('\n') if splits_per_meal is defined else '' }}</textarea>
+        <textarea id="splits_{{m}}" rows="2" cols="60">{{ (splits_per_meal.get(m) or [])|join('\n') if splits_per_meal is defined else '' }}</textarea>
 
         <div style="margin-top:8px">
           <button type="button" onclick="calcSingle('{{m}}')">Calcola solo questo pasto </button>
           <button type="button" onclick="calcDay()">Calcola giornata </button>
+          <button type="button" onclick="analyzeMeal('{{m}}')">Diagnostica scelte</button>
           <span style="margin-left:12px;">
             <span id="totals_{{m}}"></span>
           </span>
         </div>
 
+        <div id="diag_{{m}}" class="diag-block" style="display:none"></div>
         <div id="perfood_{{m}}" style="margin-top:8px"></div>
       </div>
       {% endfor %}
@@ -364,7 +427,7 @@
             fruit_ratio: parseFloat(document.querySelector(`input[name="${meal}_fruit_ratio"]`).value) || 0,
             veg_ratio: parseFloat(document.querySelector(`input[name="${meal}_veg_ratio"]`).value) || 0,
             splits_text: sanitized.text,
-            min_ratio: (parseFloat(document.getElementById('min_ratio').value) || 5) / 100.0,
+            min_grams: parseFloat(document.getElementById('min_grams').value) || 0.0,
           };
 
           fetch(computeMealUrl, {
@@ -386,9 +449,19 @@
             return data;
           })
           .then(data=>{
-            const t = data.totals;
+            const t = data.totals || {};
             const totalsSpan = document.getElementById(`totals_${meal}`);
-            totalsSpan.innerHTML = `Totali pasto: <span class="kcal">${t.kcal.toFixed(1)}</span> kcal — C: <span class="carbo">${t.carbo.toFixed(1)}</span> g P: <span class="prot">${t.proteine.toFixed(1)}</span> g F: <span class="fat">${t.grassi.toFixed(1)}</span> g`;
+            const requested = (data.requested_kcal !== undefined) ? parseFloat(data.requested_kcal) : null;
+            const kcalDelta = (data.kcal_delta !== undefined) ? parseFloat(data.kcal_delta) : (requested !== null ? (t.kcal - requested) : null);
+            // macro breakdown
+            const mb = data.macro_breakdown || {};
+            const carboPct = ((mb.carbo && mb.carbo.percent) ? mb.carbo.percent : 0.0).toFixed(1);
+            const protPct = ((mb.proteine && mb.proteine.percent) ? mb.proteine.percent : 0.0).toFixed(1);
+            const fatPct  = ((mb.grassi && mb.grassi.percent) ? mb.grassi.percent : 0.0).toFixed(1);
+            totalsSpan.innerHTML = `Totali pasto: <span class="kcal">${(t.kcal||0).toFixed(1)}</span> kcal ` +
+                                   (requested !== null ? ` (richiesti: <strong>${requested.toFixed(1)}</strong> kcal, delta: <strong>${kcalDelta >= 0 ? '+' : ''}${kcalDelta.toFixed(1)}</strong> kcal)` : '') +
+                                   ` — C: <span class="carbo">${(t.carbo||0).toFixed(1)}</span> g P: <span class="prot">${(t.proteine||0).toFixed(1)}</span> g F: <span class="fat">${(t.grassi||0).toFixed(1)}</span> g` +
+                                   `<br><small>Macro % (kcal): C ${carboPct}% • P ${protPct}% • F ${fatPct}%</small>`;
             const pfDiv = document.getElementById(`perfood_${meal}`);
             let html = "<ul>";
             data.per_food.forEach(p => {
@@ -421,7 +494,7 @@
             fruit_ratios: (function(){ const o={}; (window.MEALS || []).forEach(function(m){ o[m] = parseFloat(document.querySelector('input[name="'+m+'_fruit_ratio"]').value) || 0; }); return o; })(),
             veg_ratios:   (function(){ const o={}; (window.MEALS || []).forEach(function(m){ o[m] = parseFloat(document.querySelector('input[name="'+m+'_veg_ratio"]').value) || 0; }); return o; })(),
             splits_per_meal: sanitizedPerMeal,
-            min_ratio: (parseFloat(document.getElementById('min_ratio').value) || 5) / 100.0,
+            min_grams: parseFloat(document.getElementById('min_grams').value) || 0.0,
           };
 
           fetch(computeDayUrl, {
@@ -447,7 +520,19 @@
             for(const meal in res){
               const t = res[meal].totals || {};
               const totalsSpan = document.getElementById(`totals_${meal}`);
-              totalsSpan.innerHTML = `Totali pasto: <span class="kcal">${(t.kcal||0).toFixed(1)}</span> kcal — C: <span class="carbo">${(t.carbo||0).toFixed(1)}</span> g P: <span class="prot">${(t.proteine||0).toFixed(1)}</span> g F: <span class="fat">${(t.grassi||0).toFixed(1)}</span> g`;
+              const requested = (res[meal].requested_kcal !== undefined) ? parseFloat(res[meal].requested_kcal) : null;
+              const kcalDelta = (requested !== null) ? (t.kcal - requested) : null;
+              // per-meal macro percent (from server)
+              const mp = res[meal].macro_percent || {};
+              const cPct = (mp.carbo !== undefined) ? mp.carbo.toFixed(1) : '0.0';
+              const pPct = (mp.proteine !== undefined) ? mp.proteine.toFixed(1) : '0.0';
+              const fPct = (mp.grassi !== undefined) ? mp.grassi.toFixed(1) : '0.0';
+
+              totalsSpan.innerHTML = `Totali pasto: <span class="kcal">${(t.kcal||0).toFixed(1)}</span> kcal ` +
+                                     (requested !== null ? ` (richiesti: <strong>${requested.toFixed(1)}</strong> kcal, delta: <strong>${kcalDelta >= 0 ? '+' : ''}${kcalDelta.toFixed(1)}</strong> kcal)` : '') +
+                                     ` — C: <span class="carbo">${(t.carbo||0).toFixed(1)}</span> g P: <span class="prot">${(t.proteine||0).toFixed(1)}</span> g F: <span class="fat">${(t.grassi||0).toFixed(1)}</span> g` +
+                                     `<br><small>Macro % (kcal): C ${cPct}% • P ${pPct}% • F ${fPct}%</small>`;
+
               const qf = res[meal].quant_frutta;
               const qv = res[meal].quant_verdura;
               if(qf !== null && qf !== undefined){ totalsSpan.innerHTML += ` <br><small>Frutta: ${qf.toFixed(1)} g</small>`; }
@@ -462,8 +547,14 @@
             }
             const td = data.total_day || {};
             const el = document.getElementById('daily_totals_container');
+            // daily macro percent from server
+            const dmp = data.daily_macro_percent || {};
+            const dc = (dmp.carbo !== undefined) ? dmp.carbo.toFixed(1) : '0.0';
+            const dp = (dmp.proteine !== undefined) ? dmp.proteine.toFixed(1) : '0.0';
+            const df = (dmp.grassi !== undefined) ? dmp.grassi.toFixed(1) : '0.0';
             el.innerHTML = `<h3>Totali giorno (calcolo)</h3>
-                            <p>${(td.kcal||0).toFixed(1)} kcal — C: ${(td.carbo||0).toFixed(1)} g P: ${(td.proteine||0).toFixed(1)} g F: ${(td.grassi||0).toFixed(1)} g</p>`;
+                            <p>${(td.kcal||0).toFixed(1)} kcal — C: ${(td.carbo||0).toFixed(1)} g P: ${(td.proteine||0).toFixed(1)} g F: ${(td.grassi||0).toFixed(1)} g</p>` +
+                         `<p><small>Media percentuale contributo macro (kcal): C ${dc}% • P ${dp}% • F ${df}%</small></p>`;
           })
           .catch(err=>{
             console.error(err);
@@ -534,7 +625,7 @@
             fruit_ratios: (function(){ const o={}; (window.MEALS || []).forEach(function(m){ o[m] = parseFloat(document.querySelector('input[name="'+m+'_fruit_ratio"]').value) || 0; }); return o; })(),
             veg_ratios:   (function(){ const o={}; (window.MEALS || []).forEach(function(m){ o[m] = parseFloat(document.querySelector('input[name="'+m+'_veg_ratio"]').value) || 0; }); return o; })(),
             splits_per_meal: (function(){ const o={}; (window.MEALS || []).forEach(function(m){ o[m] = document.getElementById('splits_' + m).value || ''; }); return o; })(),
-            min_ratio: (parseFloat(document.getElementById('min_ratio').value) || 5) / 100.0,
+            min_grams: parseFloat(document.getElementById('min_grams').value) || 0.0,
           };
           try{
             const r = await fetch(userStateUrl, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
@@ -550,6 +641,30 @@
         }
         const btnSave = document.getElementById('btn_save_state');
         if(btnSave){ btnSave.addEventListener('click', saveUserState); }
+
+        // Help modal handlers
+        const helpBtn = document.getElementById('helpBtn');
+        const helpModal = document.getElementById('helpModal');
+        const helpClose = document.getElementById('helpClose');
+        function openHelp(){
+          if(!helpModal) return;
+          helpModal.style.display = 'flex';
+          helpModal.setAttribute('aria-hidden','false');
+          // focus first focusable element inside modal
+          const btn = helpModal.querySelector('button'); if(btn) btn.focus();
+        }
+        function closeHelp(){
+          if(!helpModal) return;
+          helpModal.style.display = 'none';
+          helpModal.setAttribute('aria-hidden','true');
+          if(helpBtn) helpBtn.focus();
+        }
+        if(helpBtn) helpBtn.addEventListener('click', openHelp);
+        if(helpClose) helpClose.addEventListener('click', closeHelp);
+        if(helpModal){
+          helpModal.addEventListener('click', function(e){ if(e.target === helpModal) closeHelp(); });
+          document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeHelp(); });
+        }
       })();
     </script>
   </body>

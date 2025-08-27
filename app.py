@@ -188,7 +188,7 @@ def user_state_api():
     # keep only known keys to avoid bloat
     allowed_keys = {
         "calorie_tot","perc_pasti","macro_tot","macro_pasti",
-    "choices","fruit_ratios","veg_ratios","splits_per_meal","min_ratio"
+    "choices","fruit_ratios","veg_ratios","splits_per_meal","min_grams"
     }
     cleaned = {k: payload.get(k) for k in allowed_keys if k in payload}
     save_user_state(username, cleaned)
@@ -340,20 +340,20 @@ def parse_splits(text):
             continue
         if "=" in line:
             pair, val = line.split("=", 1)
-            parts_pair = [p.strip() for p in pair.split(",")]
-            if len(parts_pair) != 2:
+            parts_pair = [p.strip() for p in pair.split(",") if p.strip()]
+            if len(parts_pair) < 2 or len(parts_pair) > 3:
                 continue
-            a, b = parts_pair
             val = val.strip()
             if "," in val:
                 try:
                     parts = [float(x) for x in val.split(",")]
                 except Exception:
                     continue
-                out[(a, b)] = tuple(parts)
+                # allow same length or a single value
+                out[tuple(parts_pair)] = tuple(parts)
             else:
                 try:
-                    out[(a, b)] = float(val)
+                    out[tuple(parts_pair)] = float(val)
                 except Exception:
                     continue
     return out or None
@@ -383,7 +383,7 @@ def index():
             "pranzo": {"carbo": 0.55, "prot": 0.30, "fat": 0.15},
             "cena": {"carbo": 0.45, "prot": 0.35, "fat": 0.20},
     },
-    "min_ratio": 0.05,
+    "min_grams": 0.0,
     }
     username = session.get("username")
     meal_choices = {}
@@ -412,11 +412,11 @@ def index():
                 elif isinstance(val, str):
                     spm[m] = val.splitlines()
             splits_per_meal = spm
-        # min_ratio
+        # min_grams
         try:
-            mr = float(state.get("min_ratio"))
-            if 0.0 <= mr <= 0.5:
-                defaults["min_ratio"] = mr
+            mg = float(state.get("min_grams"))
+            if mg >= 0.0:
+                defaults["min_grams"] = mg
         except Exception:
             pass
     return render_template(
@@ -447,10 +447,11 @@ def compute_meal():
     choices = data.get("choices", {"carboidrati": [], "proteine": [], "grassi": [], "frutta": [], "verdura": []})
     fruit_ratio = float(data.get("fruit_ratio", 0.0))
     veg_ratio = float(data.get("veg_ratio", 0.0))
+    # min_ratio is removed
     try:
-        min_ratio = float(data.get("min_ratio", 0.05))
+        min_grams = float(data.get("min_grams", 0.0) or 0.0)
     except Exception:
-        min_ratio = 0.05
+        min_grams = 0.0
     splits_text = data.get("splits_text", "")
 
     local_splits = parse_splits(splits_text)
@@ -459,12 +460,16 @@ def compute_meal():
         cal_pasto, macro_for_meal, choices,
         carbo_db=carbo_db, prot_db=prot_db, grassi_db=grassi_db,
         frutta_db=frutta_db, verdura_db=verdura_db,
-        fruit_ratio=fruit_ratio, veg_ratio=veg_ratio
-        , min_ratio=min_ratio
+        fruit_ratio=fruit_ratio, veg_ratio=veg_ratio,
+    min_grams=min_grams
     )
 
     if local_splits:
-        sol_bilanciata, info = bilancia_conservando_macros(scelti, sol, local_splits, carbo_db, prot_db, grassi_db, frutta_db, verdura_db, min_ratio=min_ratio)
+        sol_bilanciata, info = bilancia_conservando_macros(
+            scelti, sol, local_splits,
+            carbo_db, prot_db, grassi_db, frutta_db, verdura_db,
+            min_grams=min_grams
+        )
     else:
         sol_bilanciata = sol.copy() if hasattr(sol, "copy") else sol
         info = {"skipped": True}
@@ -511,13 +516,45 @@ def compute_meal():
 
     totals_serial = {k: float(totals.get(k, 0.0)) for k in ("kcal", "carbo", "proteine", "grassi")}
 
+    # Attempt mixed-macro correction (skips if not applicable)
+    try:
+        corr = _apply_mixed_macro_correction(per_food_serial, cal_pasto, macro_for_meal, local_splits)
+    except Exception:
+        corr = None
+    if corr:
+        per_food_serial, totals_serial, corr_meta = corr
+        # enrich info
+        if isinstance(info, dict):
+            info["mixed_macro_correction"] = corr_meta
+
+    # calorie confronto richieste vs ottenute
+    requested_kcal = float(cal_pasto)
+    kcal_delta = totals_serial.get("kcal", 0.0) - requested_kcal
+
+    # contributo calorico per macronutriente (kcal) e percentuale
+    carb_kcal = totals_serial.get("carbo", 0.0) * 4.0
+    prot_kcal = totals_serial.get("proteine", 0.0) * 4.0
+    fat_kcal  = totals_serial.get("grassi", 0.0) * 9.0
+    macro_kcal_sum = carb_kcal + prot_kcal + fat_kcal
+    # Use macro kcal sum as base for macro % to avoid calorie-field inconsistencies
+    base_kcal = macro_kcal_sum if macro_kcal_sum > 0 else totals_serial.get("kcal", 0.0)
+    macro_percent = {
+        "carbo": {"kcal": carb_kcal, "percent": (carb_kcal / base_kcal) * 100.0 if base_kcal else 0.0},
+        "proteine": {"kcal": prot_kcal, "percent": (prot_kcal / base_kcal) * 100.0 if base_kcal else 0.0},
+        "grassi": {"kcal": fat_kcal, "percent": (fat_kcal / base_kcal) * 100.0 if base_kcal else 0.0},
+    }
+
     return jsonify({
         "meal": meal,
         "per_food": per_food_serial,
         "totals": totals_serial,
-    "quant_frutta": float(quant_frutta) if quant_frutta is not None else None,
-    "quant_verdura": float(quant_verdura) if quant_verdura is not None else None,
-        "info": info
+        "quant_frutta": float(quant_frutta) if quant_frutta is not None else None,
+        "quant_verdura": float(quant_verdura) if quant_verdura is not None else None,
+        "info": info,
+        "requested_kcal": requested_kcal,
+        "kcal_delta": float(kcal_delta),
+        "macro_kcal": macro_kcal_sum,
+        "macro_breakdown": macro_percent
     })
 
 @app.route("/compute_day", methods=["POST"])
@@ -541,10 +578,11 @@ def compute_day():
     fruit_ratios = data.get("fruit_ratios", {}) or {}
     veg_ratios = data.get("veg_ratios", {}) or {}
     splits_per_meal_raw = data.get("splits_per_meal", {}) or {}
+    # min_ratio is removed
     try:
-        min_ratio = float(data.get("min_ratio", 0.05))
+        min_grams = float(data.get("min_grams", 0.0) or 0.0)
     except Exception:
-        min_ratio = 0.05
+        min_grams = 0.0
 
     results = {}
     total_day = {"kcal": 0.0, "carbo": 0.0, "proteine": 0.0, "grassi": 0.0}
@@ -565,11 +603,12 @@ def compute_day():
             cal_pasto, macro_for_meal, choices,
             carbo_db=carbo_db, prot_db=prot_db, grassi_db=grassi_db,
             frutta_db=frutta_db, verdura_db=verdura_db,
-            fruit_ratio=fruit_ratio, veg_ratio=veg_ratio, min_ratio=min_ratio
+            fruit_ratio=fruit_ratio, veg_ratio=veg_ratio
+            , min_grams=min_grams
         )
 
         if local_splits:
-            sol_bilanciata, info = bilancia_conservando_macros(scelti, sol, local_splits, carbo_db, prot_db, grassi_db, frutta_db, verdura_db, min_ratio=min_ratio)
+            sol_bilanciata, info = bilancia_conservando_macros(scelti, sol, local_splits, carbo_db, prot_db, grassi_db, frutta_db, verdura_db, min_grams=min_grams)
         else:
             sol_bilanciata = sol.copy() if hasattr(sol, "copy") else sol
             info = {"skipped": True}
@@ -611,10 +650,25 @@ def compute_day():
                 per_food_serial.append({"nome": vd, "grammi": grams, "kcal": kcal, "carbo": carbo, "proteine": proteine, "grassi": grassi})
                 totals["kcal"] += kcal; totals["carbo"] += carbo; totals["proteine"] += proteine; totals["grassi"] += grassi
 
+        # Apply mixed-macro correction for this meal (skips if not applicable)
+        try:
+            corr = _apply_mixed_macro_correction(per_food_serial, cal_pasto, macro_for_meal, local_splits)
+        except Exception:
+            corr = None
+        if corr:
+            per_food_serial, totals = corr[0], corr[1]
+
         results[m] = {
             "scelti": scelti,
             "per_food": per_food_serial,
             "totals": {k: float(totals.get(k, 0.0)) for k in ("kcal", "carbo", "proteine", "grassi")},
+            # macro kcal breakdown per pasto
+            "macro_kcal": {
+                "carbo": float(totals.get("carbo", 0.0)) * 4.0,
+                "proteine": float(totals.get("proteine", 0.0)) * 4.0,
+                "grassi": float(totals.get("grassi", 0.0)) * 9.0
+            },
+            "macro_percent": {},
             "quant_frutta": float(quant_frutta) if quant_frutta is not None else None,
             "quant_verdura": float(quant_verdura) if quant_verdura is not None else None,
             "info": info,
@@ -629,10 +683,48 @@ def compute_day():
         for p in results[m]["per_food"]:
             daily_per_food.append({"meal": m, **p})
 
+    # compute macro percent per meal and daily averages
+    # add macro_percent fields to each meal result
+    for m in MEALS:
+        tot = results[m]["totals"]
+        mk = results[m].get("macro_kcal") or {
+            "carbo": float(tot.get("carbo", 0.0)) * 4.0,
+            "proteine": float(tot.get("proteine", 0.0)) * 4.0,
+            "grassi": float(tot.get("grassi", 0.0)) * 9.0
+        }
+        sum_mk = mk.get("carbo", 0.0) + mk.get("proteine", 0.0) + mk.get("grassi", 0.0)
+        if sum_mk <= 0:
+            results[m]["macro_percent"] = {"carbo": 0.0, "proteine": 0.0, "grassi": 0.0}
+        else:
+            results[m]["macro_percent"] = {
+                "carbo": (mk["carbo"] / sum_mk) * 100.0,
+                "proteine": (mk["proteine"] / sum_mk) * 100.0,
+                "grassi": (mk["grassi"] / sum_mk) * 100.0
+            }
+
+    # daily average percent contribution per macro (weighted by meal kcal)
+    total_macro_kcal = {"carbo": 0.0, "proteine": 0.0, "grassi": 0.0}
+    total_macro_kcal_sum = 0.0
+    for m in MEALS:
+        mk = results[m].get("macro_kcal") or {}
+        total_macro_kcal["carbo"] += mk.get("carbo", 0.0)
+        total_macro_kcal["proteine"] += mk.get("proteine", 0.0)
+        total_macro_kcal["grassi"] += mk.get("grassi", 0.0)
+    total_macro_kcal_sum = total_macro_kcal["carbo"] + total_macro_kcal["proteine"] + total_macro_kcal["grassi"]
+    if total_macro_kcal_sum > 0:
+        daily_macro_percent = {
+            "carbo": (total_macro_kcal["carbo"] / total_macro_kcal_sum) * 100.0,
+            "proteine": (total_macro_kcal["proteine"] / total_macro_kcal_sum) * 100.0,
+            "grassi": (total_macro_kcal["grassi"] / total_macro_kcal_sum) * 100.0
+        }
+    else:
+        daily_macro_percent = {"carbo": 0.0, "proteine": 0.0, "grassi": 0.0}
+
     return jsonify({
-        "results": results,
-        "total_day": total_day,
-        "daily_per_food": daily_per_food
+    "results": results,
+    "total_day": total_day,
+    "daily_per_food": daily_per_food,
+    "daily_macro_percent": daily_macro_percent
     })
 
 @app.get("/healthz")
@@ -643,6 +735,143 @@ def healthz():
         return {"ok": True}, 200
     except Exception as e:
         return {"ok": False, "error": str(e)}, 500
+
+# ===== Helpers: lookup and mixed-macro correction =====
+def _build_lc_map(db: dict) -> dict:
+    return {str(k).strip().lower(): v for k, v in (db or {}).items()}
+
+_CARBO_LC = _build_lc_map(carbo_db)
+_PROT_LC = _build_lc_map(prot_db)
+_GRASSI_LC = _build_lc_map(grassi_db)
+_FRUTTA_LC = _build_lc_map(frutta_db)
+_VERDURA_LC = _build_lc_map(verdura_db)
+
+def _find_cat_and_nut(nome: str):
+    k = (nome or "").strip().lower()
+    if k in _CARBO_LC:  return "carboidrati", _CARBO_LC[k]
+    if k in _PROT_LC:   return "proteine", _PROT_LC[k]
+    if k in _GRASSI_LC: return "grassi", _GRASSI_LC[k]
+    if k in _FRUTTA_LC: return "frutta", _FRUTTA_LC[k]
+    if k in _VERDURA_LC:return "verdura", _VERDURA_LC[k]
+    return None, None
+
+def _split_has_cross_category(local_splits) -> bool:
+    if not local_splits:
+        return False
+    for names in local_splits.keys():
+        cats = set()
+        for n in names:
+            c, _ = _find_cat_and_nut(n)
+            if c:
+                cats.add(c)
+        # consider only main categories in conflict check
+        main = {c for c in cats if c in {"carboidrati","proteine","grassi"}}
+        if len(main) > 1:
+            return True
+    return False
+
+def _det3(a):
+    # a: 3x3 list
+    return (
+        a[0][0]*(a[1][1]*a[2][2]-a[1][2]*a[2][1]) -
+        a[0][1]*(a[1][0]*a[2][2]-a[1][2]*a[2][0]) +
+        a[0][2]*(a[1][0]*a[2][1]-a[1][1]*a[2][0])
+    )
+
+def _inv3(a):
+    d = _det3(a)
+    if abs(d) < 1e-8:
+        return None
+    invd = 1.0/d
+    # adjugate
+    m00 =  (a[1][1]*a[2][2]-a[1][2]*a[2][1])*invd
+    m01 = -(a[0][1]*a[2][2]-a[0][2]*a[2][1])*invd
+    m02 =  (a[0][1]*a[1][2]-a[0][2]*a[1][1])*invd
+    m10 = -(a[1][0]*a[2][2]-a[1][2]*a[2][0])*invd
+    m11 =  (a[0][0]*a[2][2]-a[0][2]*a[2][0])*invd
+    m12 = -(a[0][0]*a[1][2]-a[0][2]*a[1][0])*invd
+    m20 =  (a[1][0]*a[2][1]-a[1][1]*a[2][0])*invd
+    m21 = -(a[0][0]*a[2][1]-a[0][1]*a[2][0])*invd
+    m22 =  (a[0][0]*a[1][1]-a[0][1]*a[1][0])*invd
+    return [[m00,m01,m02],[m10,m11,m12],[m20,m21,m22]]
+
+def _matvec(m, v):
+    return [m[0][0]*v[0] + m[0][1]*v[1] + m[0][2]*v[2],
+            m[1][0]*v[0] + m[1][1]*v[1] + m[1][2]*v[2],
+            m[2][0]*v[0] + m[2][1]*v[1] + m[2][2]*v[2]]
+
+def _recompute_items_and_totals(items_with_grams):
+    # items_with_grams: list of tuples (nome, grams)
+    per_food = []
+    totals = {"kcal":0.0,"carbo":0.0,"proteine":0.0,"grassi":0.0}
+    for nome, grams in items_with_grams:
+        cat, nut = _find_cat_and_nut(nome)
+        if not nut:
+            continue
+        g = float(grams) or 0.0
+        cal = float(nut.get("calorie", 0.0)) * g / 100.0
+        c   = float(nut.get("carboidrati", 0.0)) * g / 100.0
+        p   = float(nut.get("proteine", 0.0)) * g / 100.0
+        f   = float(nut.get("grassi", 0.0)) * g / 100.0
+        per_food.append({"nome": nome, "grammi": g, "kcal": cal, "carbo": c, "proteine": p, "grassi": f})
+        totals["kcal"] += cal; totals["carbo"] += c; totals["proteine"] += p; totals["grassi"] += f
+    return per_food, totals
+
+def _apply_mixed_macro_correction(per_food_serial, cal_pasto, macro_for_meal, local_splits):
+    # Skip if splits bind across main categories
+    if _split_has_cross_category(local_splits):
+        return None
+    # Build A (3x3) and fixed macro kcal from fruit/veg
+    cols = ["carboidrati","proteine","grassi"]
+    col_idx = {c:i for i,c in enumerate(cols)}
+    A = [[0.0,0.0,0.0], [0.0,0.0,0.0], [0.0,0.0,0.0]]  # rows: C,P,F kcal; cols: categories
+    fv = [0.0,0.0,0.0]  # fixed fruit/veg macro kcal
+    # Collect original grams per item
+    orig_items = []
+    for it in per_food_serial:
+        nome = it.get("nome")
+        grams = float(it.get("grammi") or 0.0)
+        cat, nut = _find_cat_and_nut(nome)
+        if not nut:
+            continue
+        c = float(nut.get("carboidrati", 0.0)) * grams / 100.0
+        p = float(nut.get("proteine", 0.0)) * grams / 100.0
+        f = float(nut.get("grassi", 0.0)) * grams / 100.0
+        ck, pk, fk = 4.0*c, 4.0*p, 9.0*f
+        if cat in col_idx:
+            j = col_idx[cat]
+            A[0][j] += ck; A[1][j] += pk; A[2][j] += fk
+        else:
+            fv[0] += ck; fv[1] += pk; fv[2] += fk
+        orig_items.append((nome, grams, cat))
+    # If no main-category items, nothing to do
+    if all(A[0][j]==0 and A[1][j]==0 and A[2][j]==0 for j in range(3)):
+        return None
+    # Target macro kcal
+    targ = [
+        cal_pasto * float(macro_for_meal.get("carbo", 0.0) or 0.0),
+        cal_pasto * float(macro_for_meal.get("prot",  0.0) or 0.0),
+        cal_pasto * float(macro_for_meal.get("fat",   0.0) or 0.0),
+    ]
+    b = [targ[0]-fv[0], targ[1]-fv[1], targ[2]-fv[2]]
+    invA = _inv3(A)
+    if invA is None:
+        return None
+    s = _matvec(invA, b)  # scale factors for [carboidrati, proteine, grassi]
+    # Sanity: positive and bounded
+    if any((not (s_i == s_i)) or s_i <= 0 or s_i > 20 for s_i in s):  # NaN check and bounds
+        return None
+    # Apply scaling
+    s_map = {cols[i]: s[i] for i in range(3)}
+    new_items = []
+    for nome, grams, cat in orig_items:
+        if cat in s_map:
+            new_items.append((nome, grams * s_map[cat]))
+        else:
+            new_items.append((nome, grams))  # fruit/veg unchanged
+    new_per_food, new_totals = _recompute_items_and_totals(new_items)
+    meta = {"applied": True, "scale_factors": s_map}
+    return new_per_food, new_totals, meta
 
 if __name__ == "__main__":
     # Avvio locale/standalone: usa env o default

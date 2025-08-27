@@ -78,7 +78,7 @@ def calcola_target(calorie_tot, perc_macro):
     return carb_target, prot_target, fat_target
 
 
-def calcola_dieta(calorie_pasto, perc_macro, scelta, carbo_db, prot_db, grassi_db, frutta_db, verdura_db, fruit_ratio=0.1, veg_ratio=0.1, min_ratio: float = 0.05):
+def calcola_dieta(calorie_pasto, perc_macro, scelta, carbo_db, prot_db, grassi_db, frutta_db, verdura_db, fruit_ratio=0.1, veg_ratio=0.1, min_grams: float = 0.0):
     """
     Calcola i grammi di alimenti scelti per un pasto.
     - calorie_pasto: kcal totali del pasto
@@ -109,9 +109,11 @@ def calcola_dieta(calorie_pasto, perc_macro, scelta, carbo_db, prot_db, grassi_d
         food_list.append(f); food_db_list.append(prot_db); food_origin.append("proteine")
     for f in scelta.get("grassi", []):
         food_list.append(f); food_db_list.append(grassi_db); food_origin.append("grassi")
-    # includi frutta nella risoluzione (se presente)
-    for f in scelta.get("frutta", []):
-        food_list.append(f); food_db_list.append(frutta_db); food_origin.append("frutta")
+    # includi frutta nella risoluzione (se presente) solo se viene richiesta quota kcal per frutta
+    # in caso fruit_ratio==0 l'utente non vuole che la frutta contribuisca alla parte principale
+    if fruit_ratio and float(fruit_ratio) > 0.0:
+        for f in scelta.get("frutta", []):
+            food_list.append(f); food_db_list.append(frutta_db); food_origin.append("frutta")
 
     if not food_list:
         raise ValueError("Devi selezionare almeno un alimento tra carboidrati, proteine o grassi.")
@@ -142,10 +144,8 @@ def calcola_dieta(calorie_pasto, perc_macro, scelta, carbo_db, prot_db, grassi_d
     else:
         A = A_macros
 
-    # vincoli di partecipazione minima: ogni alimento principale (carbo/prot/grassi)
-    # deve contribuire almeno a min_ratio delle calorie della parte principale
-    MIN_RATIO = max(0.0, min(0.5, float(min_ratio)))
-    CAP_RATIO = 0.90  # cap sulla somma dei minimi per stabilità
+    # vincoli di partecipazione minima sono ora gestiti tramite min_grams (protezione per alimento)
+    CAP_RATIO = 0.90  # cap sulla somma dei minimi per stabilità (non usato)
     n = len(food_list)
     lb = np.zeros(n, dtype=float)
     # kcal per grammo
@@ -153,26 +153,18 @@ def calcola_dieta(calorie_pasto, perc_macro, scelta, carbo_db, prot_db, grassi_d
     is_main = np.array([orig in ("carboidrati","proteine","grassi") for orig in food_origin], dtype=bool)
     is_fruit = np.array([orig == "frutta" for orig in food_origin], dtype=bool)
     # min kcal per ciascun gruppo
-    min_kcal_main = np.where(is_main, MIN_RATIO * calorie_for_macros, 0.0)
-    total_min_main = float(min_kcal_main.sum())
-    cap_main = CAP_RATIO * max(0.0, float(calorie_for_macros))
-    scale_main = 1.0
-    if total_min_main > cap_main and total_min_main > 0:
-        scale_main = cap_main / total_min_main
-    min_kcal_main *= scale_main
-
-    min_kcal_fruit = np.where(is_fruit, MIN_RATIO * calorie_fruit, 0.0)
-    total_min_fruit = float(min_kcal_fruit.sum())
-    cap_fruit = CAP_RATIO * max(0.0, float(calorie_fruit))
-    scale_fruit = 1.0
-    if total_min_fruit > cap_fruit and total_min_fruit > 0:
-        scale_fruit = cap_fruit / total_min_fruit
-    min_kcal_fruit *= scale_fruit
-
-    min_kcal_each = min_kcal_main + min_kcal_fruit
-    # converti in grammi: g = kcal / (kcal/g)
+    # senza vincoli percentuali, inizialmente lb a zero; min_grams verrà applicato successivamente
     with np.errstate(divide='ignore', invalid='ignore'):
-        lb = np.where((is_main) & (kpg > 0), min_kcal_each / kpg, 0.0)
+        lb = np.zeros(n, dtype=float)
+
+    # enforce a minimum grams per food if requested (protects alimenti dall'essere azzerati)
+    try:
+        mg = float(min_grams)
+    except Exception:
+        mg = 0.0
+    if mg > 0.0:
+        min_grammi_arr = np.full(n, mg, dtype=float)
+        lb = np.maximum(lb, min_grammi_arr)
 
     # risolvo il problema least-squares con vincoli lb <= x
     res = lsq_linear(A, b, bounds=(lb, np.inf))
@@ -199,7 +191,7 @@ def stampa_risultati(pasto, scelti, sol, quant_frutta, quant_verdura):
     # frutta/verdura output removed (handled in web UI)
 
 
-def bilancia_conservando_macros(food_list, sol, splits, carbo_db, prot_db, grassi_db, frutta_db, verdura_db, min_ratio: float = 0.05):
+def bilancia_conservando_macros(food_list, sol, splits, carbo_db, prot_db, grassi_db, frutta_db, verdura_db, min_grams: float = 0.0):
     """
     Impone gli split (come rapporto di kcal tra coppie) mantenendo i vincoli globali sui macronutrienti.
     - food_list: lista nomi alimenti (nell'ordine di 'sol')
@@ -265,53 +257,68 @@ def bilancia_conservando_macros(food_list, sol, splits, carbo_db, prot_db, grass
 
     # parser split
     def parse_pair(key):
-        if isinstance(key, (tuple, list)) and len(key) == 2:
-            return str(key[0]), str(key[1])
+        # return list of 2 or 3 normalized names
+        if isinstance(key, (tuple, list)):
+            parts = [str(x).strip() for x in key if str(x).strip()]
+            if 2 <= len(parts) <= 3:
+                return parts
         if isinstance(key, str):
-            parts = [p.strip() for p in key.split(",")]
-            if len(parts) == 2:
-                return parts[0], parts[1]
+            parts = [p.strip() for p in key.split(",") if p.strip()]
+            if 2 <= len(parts) <= 3:
+                return parts
         raise ValueError(f"Chiave split non valida: {key}")
 
-    def to_fraction(v):
-        if isinstance(v, (tuple, list)) and len(v) == 2:
-            a, b = float(v[0]), float(v[1])
-            s = a + b
-            return 0.5 if s == 0 else (a / s)
+    def to_fraction(v, k):
+        """Return list of k fractions summing to 1.
+        - if v is list/tuple with k elements: convert to floats and normalize (treat >1 as percents)
+        - if v is single float and k==2: interpret as alpha for first, 1-alpha for second
+        - if v is single float and k>2: treat as first fraction and split remainder evenly among others
+        """
+        if isinstance(v, (tuple, list)):
+            vals = [float(x) for x in v]
+            if len(vals) != k:
+                raise ValueError("Numero di frazioni non corrisponde al numero di alimenti nello split")
+            s = sum(vals)
+            # if values look like percents (>1) normalize by their sum
+            if any(x > 1.0 for x in vals) and s > 0:
+                vals = [x / s for x in vals]
+            else:
+                # if already fractions but don't sum to 1, normalize to sum 1
+                if abs(s - 1.0) > 1e-9 and s > 0:
+                    vals = [x / s for x in vals]
+            # clamp
+            vals = [max(1e-9, min(1.0, float(x))) for x in vals]
+            # renormalize
+            s2 = sum(vals)
+            return [x / s2 for x in vals]
+        # single float
         f = float(v)
         if f > 1.0:
             f /= 100.0
-        # assumiamo input corretto 0<alpha<1; clamp minimo per stabilità
-        return max(1e-9, min(1 - 1e-9, f))
+        f = max(0.0, min(1.0, f))
+        if k == 2:
+            a = max(1e-9, min(1 - 1e-9, f))
+            return [a, 1.0 - a]
+        # k > 2: give first f and split remainder evenly
+        rem = max(0.0, 1.0 - f)
+        others = rem / (k - 1)
+        out = [f] + [others] * (k - 1)
+        # clamp and renormalize
+        out = [max(1e-9, min(1.0, x)) for x in out]
+        s = sum(out)
+        return [x / s for x in out]
 
-    # vincoli minimi per alimento (solo principali): almeno 5% delle kcal totali della parte principale
-    MIN_RATIO = max(0.0, min(0.5, float(min_ratio)))
-    CAP_RATIO = 0.90
+    # lb_x iniziale: nessun vincolo percentuale, useremo min_grams se fornito
     is_main = np.array([o in ("carboidrati","proteine","grassi") for o in food_origin], dtype=bool)
-    is_fruit = np.array([o == "frutta" for o in food_origin], dtype=bool)
-    total_kcal_main = float(np.dot(kcal_per_g, np.array(sol, dtype=float) * (is_main.astype(float))))
-    if total_kcal_main <= 0:
-        total_kcal_main = float(np.dot(kcal_per_g, np.array(sol, dtype=float)))
-    min_kcal_main = np.where(is_main, MIN_RATIO * total_kcal_main, 0.0)
-    total_min_main = float(min_kcal_main.sum())
-    cap_main = CAP_RATIO * total_kcal_main if total_kcal_main > 0 else 0.0
-    scale_main = 1.0
-    if total_kcal_main > 0 and total_min_main > cap_main and total_min_main > 0:
-        scale_main = cap_main / total_min_main
-    min_kcal_main *= scale_main
-
-    total_kcal_fruit = float(np.dot(kcal_per_g, np.array(sol, dtype=float) * (is_fruit.astype(float))))
-    min_kcal_fruit = np.where(is_fruit, MIN_RATIO * total_kcal_fruit, 0.0)
-    total_min_fruit = float(min_kcal_fruit.sum())
-    cap_fruit = CAP_RATIO * total_kcal_fruit if total_kcal_fruit > 0 else 0.0
-    scale_fruit = 1.0
-    if total_kcal_fruit > 0 and total_min_fruit > cap_fruit and total_min_fruit > 0:
-        scale_fruit = cap_fruit / total_min_fruit
-    min_kcal_fruit *= scale_fruit
-
-    min_kcal_each = min_kcal_main + min_kcal_fruit
-    # lb in grammi per x
-    lb_x = np.where((is_main) & (kcal_per_g > 0), min_kcal_each / kcal_per_g, 0.0)
+    kcal_per_g_arr = kcal_per_g
+    lb_x = np.zeros(n, dtype=float)
+    # apply min_grams protection
+    try:
+        mg = float(min_grams)
+    except Exception:
+        mg = 0.0
+    if mg > 0.0:
+        lb_x = np.maximum(lb_x, np.full(n, mg, dtype=float))
 
     # costruisci la trasformazione M: x = M·y
     # - per ogni coppia (i,j,alpha): una colonna che rappresenta i kcal totali della coppia
@@ -324,39 +331,35 @@ def bilancia_conservando_macros(food_list, sol, splits, carbo_db, prot_db, grass
     lb_y_list = []
 
     for key, val in splits.items():
-        a_name, b_name = parse_pair(key)
-        ia = idx_map[norm_name(a_name)]
-        ib = idx_map[norm_name(b_name)]
-        alpha = to_fraction(val)
-        ka = kcal_per_g[ia]
-        kb = kcal_per_g[ib]
-        # sicurezza anti-divisione per zero
-        if ka <= 0: ka = 1e-9
-        if kb <= 0: kb = 1e-9
+        names = parse_pair(key)
+        k = len(names)
+        idxs = [idx_map[norm_name(n)] for n in names]
+        alphas = to_fraction(val, k)
+        # build column for the group variable y
         col = np.zeros(n, dtype=float)
-        col[ia] = alpha / ka
-        col[ib] = (1.0 - alpha) / kb
+        # compute lower bound candidate for y
+        lb_candidates = []
+        for name_idx, alpha in zip(idxs, alphas):
+            ki = kcal_per_g[name_idx]
+            if ki <= 0.0:
+                ki = 1e-9
+            col[name_idx] = alpha / ki
+            assigned.add(name_idx)
+            lb_candidates.append((lb_x[name_idx] * ki) / max(alpha, 1e-9))
         cols.append(col)
-        assigned.add(ia)
-        assigned.add(ib)
         applied.append({
-            "pair": (food_list[ia], food_list[ib]),
-            "alpha": float(alpha)
+            "pair": tuple(food_list[i] for i in idxs),
+            "alphas": [float(a) for a in alphas]
         })
-        # lower bound su y per rispettare lb_x su entrambe le componenti
-        # x_i = (alpha/ka)*y >= lb_x[i]  => y >= lb_x[i]*ka/alpha
-        # x_j = ((1-alpha)/kb)*y >= lb_x[j] => y >= lb_x[j]*kb/(1-alpha)
-        ya = (lb_x[ia] * ka / max(alpha, 1e-9))
-        yb = (lb_x[ib] * kb / max(1.0 - alpha, 1e-9))
-        lb_y_list.append(max(0.0, ya, yb))
+        lb_y_list.append(max(0.0, max(lb_candidates) if lb_candidates else 0.0))
 
     for i in range(n):
         if i in assigned:
             continue
         col = np.zeros(n, dtype=float)
         col[i] = 1.0
-    cols.append(col)
-    lb_y_list.append(max(0.0, lb_x[i]))
+        cols.append(col)
+        lb_y_list.append(max(0.0, lb_x[i]))
 
     M = np.column_stack(cols) if cols else np.eye(n)
     A_red = A.dot(M)

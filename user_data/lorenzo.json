@@ -1,0 +1,88 @@
+{
+  "perc_pasti": {
+    "colazione": 0.25,
+    "pranzo": 0.4,
+    "cena": 0.35
+  },
+  "fruit_ratios": {
+    "colazione": 0.05,
+    "pranzo": 0,
+    "cena": 0
+  },
+  "splits_per_meal": {
+    "colazione": "",
+    "pranzo": "",
+    "cena": ""
+  },
+  "calorie_tot": 1750,
+  "veg_ratios": {
+    "colazione": 0,
+    "pranzo": 0,
+    "cena": 0
+  },
+  "macro_tot": {
+    "carbo": 0.5,
+    "prot": 0.3,
+    "fat": 0.2
+  },
+  "choices": {
+    "colazione": {
+      "carboidrati": [
+        "muesli"
+      ],
+      "proteine": [
+        "yogurt greco"
+      ],
+      "grassi": [
+        "frutta secca mix"
+      ],
+      "frutta": [
+        "marmellata light"
+      ],
+      "verdura": []
+    },
+    "pranzo": {
+      "carboidrati": [
+        "pasta integrale"
+      ],
+      "proteine": [
+        "tonno in scatola",
+        "feta"
+      ],
+      "grassi": [],
+      "frutta": [],
+      "verdura": []
+    },
+    "cena": {
+      "carboidrati": [
+        "pane di segale"
+      ],
+      "proteine": [
+        "pollo"
+      ],
+      "grassi": [
+        "olio d'oliva"
+      ],
+      "frutta": [],
+      "verdura": []
+    }
+  },
+  "min_grams": 0,
+  "macro_pasti": {
+    "colazione": {
+      "carbo": 0.55,
+      "prot": 0.45,
+      "fat": 0.2
+    },
+    "pranzo": {
+      "carbo": 0.55,
+      "prot": 0.45,
+      "fat": 0.2
+    },
+    "cena": {
+      "carbo": 0.45,
+      "prot": 0.55,
+      "fat": 0.2
+    }
+  }
+}
