@@ -1,88 +1,69 @@
 {
-  "perc_pasti": {
-    "colazione": 0.25,
-    "pranzo": 0.4,
-    "cena": 0.35
-  },
-  "fruit_ratios": {
-    "colazione": 0.05,
-    "pranzo": 0,
-    "cena": 0
-  },
   "splits_per_meal": {
     "colazione": "",
     "pranzo": "",
     "cena": ""
   },
-  "calorie_tot": 1750,
+  "min_grams": 0,
   "veg_ratios": {
     "colazione": 0,
     "pranzo": 0,
     "cena": 0
   },
-  "macro_tot": {
-    "carbo": 0.5,
-    "prot": 0.3,
-    "fat": 0.2
+  "macro_pasti": {
+    "colazione": {
+      "carbo": 0.48,
+      "prot": 0.27,
+      "fat": 0.25
+    },
+    "pranzo": {
+      "carbo": 0.52,
+      "prot": 0.29,
+      "fat": 0.19
+    },
+    "cena": {
+      "carbo": 0.49,
+      "prot": 0.34,
+      "fat": 0.17
+    }
   },
   "choices": {
     "colazione": {
-      "carboidrati": [
-        "muesli"
-      ],
-      "proteine": [
-        "yogurt greco"
-      ],
-      "grassi": [
-        "frutta secca mix"
-      ],
-      "frutta": [
-        "marmellata light"
-      ],
+      "carboidrati": [],
+      "proteine": [],
+      "grassi": [],
+      "frutta": [],
       "verdura": []
     },
     "pranzo": {
-      "carboidrati": [
-        "pasta integrale"
-      ],
-      "proteine": [
-        "tonno in scatola",
-        "feta"
-      ],
+      "carboidrati": [],
+      "proteine": [],
       "grassi": [],
       "frutta": [],
       "verdura": []
     },
     "cena": {
-      "carboidrati": [
-        "pane di segale"
-      ],
-      "proteine": [
-        "pollo"
-      ],
-      "grassi": [
-        "olio d'oliva"
-      ],
+      "carboidrati": [],
+      "proteine": [],
+      "grassi": [],
       "frutta": [],
       "verdura": []
     }
   },
-  "min_grams": 0,
-  "macro_pasti": {
-    "colazione": {
-      "carbo": 0.55,
-      "prot": 0.45,
-      "fat": 0.2
-    },
-    "pranzo": {
-      "carbo": 0.55,
-      "prot": 0.45,
-      "fat": 0.2
-    },
-    "cena": {
-      "carbo": 0.45,
-      "prot": 0.55,
-      "fat": 0.2
-    }
+  "calorie_tot": 1750,
+  "macro_tot": {
+    "carbo": 0.5,
+    "prot": 0.3,
+    "fat": 0.2
+  },
+  "perc_pasti": {
+    "colazione": 0.3,
+    "pranzo": 0.35,
+    "cena": 0.35
+  },
+  "fruit_ratios": {
+    "colazione": 0.05,
+    "pranzo": 0.05,
+    "cena": 0.05
   }
 }

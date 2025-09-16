@@ -1,0 +1,8 @@
+{
+  "users": {
+    "lorenzo": {
+      "password_hash": "scrypt:32768:8:1$bw90ylbe3B2bKguk$d41db5a74a7a74621cc74f8b78ddf88eb2c46e10b660657c9f13910c35901639bdff8939519d8bf1f3e11e051768ff753ee3feb894400d7e61cddb36461c17e5",
+      "created_at": "2025-08-27T15:18:11.306469Z"
+    }
+  }
+}

@@ -2,28 +2,73 @@
 <html>
   <head>
     <meta charset="utf-8"/>
-    <title>DietaPro - Login</title>
+    <title>Accedi - DietaPro</title>
     <style>
-      body{font-family:Arial;max-width:520px;margin:60px auto}
-      .card{border:1px solid #ddd;padding:16px;border-radius:6px}
-      label{display:block;margin:8px 0}
-      input{width:100%;padding:8px}
-      button{padding:8px 14px;cursor:pointer}
-      .error{color:#b00020;margin-top:8px}
+      body{font-family:Arial;max-width:480px;margin:40px auto;padding:0 12px}
+      h1{margin-bottom:6px}
+      .tabs{display:flex;gap:8px;margin:12px 0}
+      .tabs button{padding:8px 12px;cursor:pointer;border:1px solid #ccc;background:#f7f7f7}
+      .tabs button.active{background:#e3f2fd;border-color:#90caf9}
+      form{border:1px solid #ddd;padding:12px;border-radius:6px}
+      label{display:block;margin:8px 0 4px}
+      input{width:100%;padding:8px;box-sizing:border-box}
+      .row{display:flex;gap:8px}
+      .actions{margin-top:12px;display:flex;gap:8px}
+      .error{color:#b00020;margin:8px 0}
     </style>
   </head>
   <body>
     <h1>DietaPro</h1>
-    <div class="card">
-      <form method="post" action="/login">
-        <label>Nome utente
-          <input type="text" name="username" placeholder="es. mario" required />
-        </label>
-        <button type="submit">Entra</button>
-        {% if error %}
-          <div class="error">{{ error }}</div>
-        {% endif %}
-      </form>
+    <div class="tabs">
+      <button id="tabLogin" class="active" type="button">Accedi</button>
+      <button id="tabRegister" type="button">Crea nuovo utente</button>
     </div>
+
+    {% if error %}
+      <div class="error">{{ error }}</div>
+    {% endif %}
+
+    <form id="formLogin" method="post" action="{{ url_for('login') }}">
+      <input type="hidden" name="action" value="login">
+      <label>Nome utente</label>
+      <input name="username" required autocomplete="username">
+      <label>PIN (4 cifre)</label>
+      <input name="pin" required pattern="\d{4}" inputmode="numeric" autocomplete="current-password" placeholder="0000">
+      <div class="actions">
+        <button type="submit">Accedi</button>
+      </div>
+    </form>
+
+    <form id="formRegister" method="post" action="{{ url_for('login') }}" style="display:none">
+      <input type="hidden" name="action" value="register">
+      <label>Nome utente</label>
+      <input name="username" required autocomplete="username" placeholder="es. mario.rossi">
+      <label>PIN (4 cifre)</label>
+      <input name="pin" required pattern="\d{4}" inputmode="numeric" autocomplete="new-password" placeholder="0000">
+      <div class="actions">
+        <button type="submit">Crea utente</button>
+      </div>
+      <p style="font-size:12px;color:#555;margin-top:8px">Il nome utente deve essere univoco. Il PIN deve essere composto da 4 cifre numeriche.</p>
+    </form>
+
+    <script>
+      (function(){
+        const tabLogin = document.getElementById('tabLogin');
+        const tabRegister = document.getElementById('tabRegister');
+        const formLogin = document.getElementById('formLogin');
+        const formRegister = document.getElementById('formRegister');
+        function show(which){
+          if(which === 'login'){
+            tabLogin.classList.add('active'); tabRegister.classList.remove('active');
+            formLogin.style.display='block'; formRegister.style.display='none';
+          }else{
+            tabRegister.classList.add('active'); tabLogin.classList.remove('active');
+            formRegister.style.display='block'; formLogin.style.display='none';
+          }
+        }
+        tabLogin.addEventListener('click', ()=>show('login'));
+        tabRegister.addEventListener('click', ()=>show('register'));
+      })();
+    </script>
   </body>
 </html>

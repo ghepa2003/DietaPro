@@ -3,6 +3,7 @@ from DietaProg_functions import importa_db, calcola_dieta, bilancia_conservando_
 import os
 import pandas as pd
 from openpyxl import load_workbook
+from werkzeug.security import generate_password_hash, check_password_hash  # NEW
 
 
 app = Flask(__name__, template_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates'))
@@ -16,6 +17,34 @@ DATA_DIR = os.environ.get("DIETAPRO_DATA_DIR", BASE_DIR)
 # Directory for per-user persisted state
 USER_DATA_DIR = os.path.join(DATA_DIR, "user_data")
 os.makedirs(USER_DATA_DIR, exist_ok=True)
+
+# ===== Users registry (account + 4-digit PIN) =====
+USERS_DB_FILE = os.path.join(USER_DATA_DIR, "_users.json")
+
+def _load_users() -> dict:
+    try:
+        import json
+        if os.path.isfile(USERS_DB_FILE):
+            with open(USERS_DB_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f) or {}
+                users = data.get("users") or {}
+                # normalize keys (already sanitized at save)
+                return {str(k): v for k, v in users.items()}
+    except Exception as e:
+        print(f"[WARN] _load_users failed: {e}")
+    return {}
+
+def _save_users(users: dict) -> None:
+    try:
+        import json
+        os.makedirs(USER_DATA_DIR, exist_ok=True)
+        with open(USERS_DB_FILE, "w", encoding="utf-8") as f:
+            json.dump({"users": users or {}}, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[WARN] _save_users failed: {e}")
+
+def _is_valid_pin(pin: str) -> bool:
+    return isinstance(pin, str) and len(pin) == 4 and pin.isdigit()
 
 """Percorso del file Excel degli alimenti
 Ordine di risoluzione:
@@ -155,19 +184,53 @@ def require_login():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        raw_username = None
+        # Accept both form and JSON
         if request.is_json:
             body = request.get_json(silent=True) or {}
             raw_username = body.get("username")
-        if raw_username is None:
+            pin = body.get("pin") or body.get("password")  # accept either key
+            action = (body.get("action") or "login").strip().lower()
+        else:
             raw_username = request.form.get("username")
+            pin = request.form.get("pin") or request.form.get("password")
+            action = (request.form.get("action") or "login").strip().lower()
+
         username = _sanitize_username(raw_username)
         if not username:
             err = "Inserisci un nome utente valido"
             return render_template("login.html", error=err), 400
+        if not _is_valid_pin(str(pin or "")):
+            err = "PIN non valido: deve essere di 4 cifre numeriche"
+            return render_template("login.html", error=err), 400
+
+        users = _load_users()
+
+        if action == "register":
+            # enforce unique username
+            if username in users:
+                err = "Nome utente già utilizzato"
+                return render_template("login.html", error=err), 400
+            # create user with hashed PIN
+            users[username] = {
+                "password_hash": generate_password_hash(str(pin)),
+                "created_at": __import__("datetime").datetime.utcnow().isoformat() + "Z"
+            }
+            _save_users(users)
+            session["username"] = username
+            nxt = request.args.get("next") or url_for("index")
+            return redirect(nxt)
+
+        # default: login
+        data = users.get(username)
+        if not data or not check_password_hash(str(data.get("password_hash") or ""), str(pin)):
+            err = "Credenziali non valide"
+            return render_template("login.html", error=err), 401
+
         session["username"] = username
         nxt = request.args.get("next") or url_for("index")
         return redirect(nxt)
+
+    # GET
     return render_template("login.html")
 
 @app.route("/logout", methods=["POST", "GET"])
@@ -188,7 +251,8 @@ def user_state_api():
     # keep only known keys to avoid bloat
     allowed_keys = {
         "calorie_tot","perc_pasti","macro_tot","macro_pasti",
-    "choices","fruit_ratios","veg_ratios","splits_per_meal","min_grams"
+        "choices","fruit_ratios","veg_ratios","splits_per_meal","min_grams",
+        "weekly","selected_day"  # NEW
     }
     cleaned = {k: payload.get(k) for k in allowed_keys if k in payload}
     save_user_state(username, cleaned)
@@ -329,6 +393,7 @@ def get_food():
     })
 
 MEALS = ["colazione", "pranzo", "cena"]
+WEEK_DAYS = ["lunedi", "martedi", "mercoledi", "giovedi", "venerdi", "sabato", "domenica"]  # NEW
 
 def parse_splits(text):
     if not text:
@@ -382,12 +447,14 @@ def index():
             "colazione": {"carbo": 0.45, "prot": 0.25, "fat": 0.30},
             "pranzo": {"carbo": 0.55, "prot": 0.30, "fat": 0.15},
             "cena": {"carbo": 0.45, "prot": 0.35, "fat": 0.20},
-    },
-    "min_grams": 0.0,
+        },
+        "min_grams": 0.0,
     }
     username = session.get("username")
     meal_choices = {}
     splits_per_meal = {}
+    weekly_state = None  # NEW
+    selected_day = WEEK_DAYS[0]  # NEW default
     if username:
         state = load_user_state(username)
         # merge defaults with user state
@@ -419,11 +486,45 @@ def index():
                 defaults["min_grams"] = mg
         except Exception:
             pass
+        # NEW: weekly state
+        if isinstance(state.get("weekly"), dict):
+            # ensure keys exist for all days
+            weekly_state = {}
+            for d in WEEK_DAYS:
+                v = state["weekly"].get(d, {}) if isinstance(state["weekly"], dict) else {}
+                weekly_state[d] = {
+                    "choices": (v.get("choices") if isinstance(v.get("choices"), dict) else {}),
+                    "fruit_ratios": (v.get("fruit_ratios") if isinstance(v.get("fruit_ratios"), dict) else {}),
+                    "veg_ratios": (v.get("veg_ratios") if isinstance(v.get("veg_ratios"), dict) else {}),
+                    "splits_per_meal": (v.get("splits_per_meal") if isinstance(v.get("splits_per_meal"), dict) else {}),
+                }
+            # optional: selected day
+            if isinstance(state.get("selected_day"), str) and state["selected_day"] in WEEK_DAYS:
+                selected_day = state["selected_day"]
+        else:
+            weekly_state = None
+
+    # if no weekly state, initialize same settings for all days from current single-day inputs
+    if weekly_state is None:
+        weekly_state = {}
+        # build a simple copy from current prefilled values
+        base = {
+            "choices": meal_choices or {},
+            "fruit_ratios": {m: 0.0 for m in MEALS},
+            "veg_ratios": {m: 0.0 for m in MEALS},
+            "splits_per_meal": {m: (splits_per_meal.get(m) or []) for m in MEALS},
+        }
+        for d in WEEK_DAYS:
+            weekly_state[d] = base
+
     return render_template(
         "index.html",
         foods_by_cat=foods_by_cat,
         defaults=defaults,
         MEALS=MEALS,
+        WEEK_DAYS=WEEK_DAYS,           # NEW
+        weekly_state=weekly_state,     # NEW
+        selected_day=selected_day,     # NEW
         username=username,
         meal_choices=meal_choices,
         splits_per_meal=splits_per_meal,

@@ -21,6 +21,11 @@
       .diag-ok{background:#ecfdf5;border-color:#a7f3d0;color:#065f46}
       .diag-block ul{margin:6px 0 0 18px}
       .diag-note{font-size:12px;color:#666}
+      .week-tabs{display:flex;gap:6px;margin:10px 0 4px}
+      .week-tabs button{padding:6px 10px;border:1px solid #ccc;background:#f7f7f7;cursor:pointer;transition:background .15s,border-color .15s}
+      .week-tabs button.active{background:#e8f5e9;border-color:#2e7d32;color:#1b5e20} /* highlight current day */
+      .section{border:1px solid #ddd;padding:8px;margin:8px 0}
+      .section h4{margin:0 0 6px 0}
     </style>
   </head>
   <body>
@@ -143,17 +148,39 @@
         <div class="col"><label>Grassi <input id="macro_tot_fat" value="{{ defaults.macro_tot.fat if defaults is defined else 0.2 }}"></label></div>
       </div>
 
+      <!-- NEW: Weekday navigation -->
+      <div class="section">
+        <h4>Giorni della settimana</h4>
+        <div class="week-tabs" id="weekTabs">
+          {% for d in WEEK_DAYS %}
+            <button type="button" data-day="{{ d }}">{{ d.capitalize() }}</button>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- NEW: Per-meal macro targets (shared across all days) -->
+      <div class="section">
+        <h4>Macro per pasto (percentuali) — uguali per tutti i giorni</h4>
+        <div class="row">
+          {% for m in MEALS %}
+            <div class="col">
+              <fieldset style="border:1px solid #eee;padding:6px">
+                <legend style="font-size:12px;margin-left:8px">{{ m|capitalize }}</legend>
+                <label>Carbo <input name="macro_{{m}}_carbo" value="{{ defaults.macro_pasti[m].carbo if defaults is defined else 0.5 }}"></label>
+                <label>Prot <input name="macro_{{m}}_prot" value="{{ defaults.macro_pasti[m].prot if defaults is defined else 0.3 }}"></label>
+                <label>Fat <input name="macro_{{m}}_fat" value="{{ defaults.macro_pasti[m].fat if defaults is defined else 0.2 }}"></label>
+              </fieldset>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
       <h3>Macro e scelte per pasto</h3>
       {% for m in MEALS %}
       <div class="meal" id="meal_{{m}}">
         <h4>{{ m|capitalize }}</h4>
 
-        <div class="row">
-          <div class="col"><label>Carbo <input name="macro_{{m}}_carbo" value="{{ defaults.macro_pasti[m].carbo if defaults is defined else 0.5 }}"></label></div>
-          <div class="col"><label>Prot <input name="macro_{{m}}_prot" value="{{ defaults.macro_pasti[m].prot if defaults is defined else 0.3 }}"></label></div>
-          <div class="col"><label>Fat <input name="macro_{{m}}_fat" value="{{ defaults.macro_pasti[m].fat if defaults is defined else 0.2 }}"></label></div>
-        </div>
-
+        <!-- REMOVED: per-meal macro inputs inside meal (now centralized above) -->
         <div class="row">
           <div class="col"><label>Fruit ratio <input name="{{m}}_fruit_ratio" value="0.05"></label></div>
           <div class="col"><label>Veg ratio <input name="{{m}}_veg_ratio" value="0.0"></label></div>
@@ -163,7 +190,7 @@
         {% for cat in ['carboidrati','proteine','grassi','frutta','verdura'] %}
           <label>{{ cat }}:
             <div class="suggestions">
-              <input class="food-input" data-cat="{{cat}}" id="{{m}}_{{cat}}"  {% if cat =='carboidrati' %} placeholder="es. riso, pasta"  {% elif cat == 'proteine' %} placeholder="es. pollo, tonno" {% elif cat == 'frutta' %} placeholder="es. mela, banana" {% elif cat == 'verdura' %} placeholder="es. insalata, broccoli" {% elif cat == 'grassi' %} placeholder="es. olio, burro" {% endif %} autocomplete="off"
+              <input class="food-input" data-cat="{{cat}}" id="{{m}}_{{cat}}" {% if cat =='carboidrati' %} placeholder="es. riso, pasta" {% elif cat == 'proteine' %} placeholder="es. pollo, tonno" {% elif cat == 'frutta' %} placeholder="es. mela, banana" {% elif cat == 'verdura' %} placeholder="es. insalata, broccoli" {% elif cat == 'grassi' %} placeholder="es. olio, burro" {% endif %} autocomplete="off"
                 value="{{ (','.join((meal_choices.get(m, {}) or {}).get(cat, [])) if meal_choices is defined else '') }}">
             </div>
           </label>
@@ -197,14 +224,105 @@
 
     <script>
       (function(){
-  const foodsByCat = JSON.parse('{{ foods_by_cat|tojson | safe if foods_by_cat is defined else "{}" }}');
-  const USERNAME = "{{ username or '' }}";
-  const computeMealUrl = "{{ url_for('compute_meal') }}";
-  const computeDayUrl  = "{{ url_for('compute_day') }}";
-  const addFoodUrl     = "{{ url_for('add_food') }}";
-  const getFoodUrl     = "{{ url_for('get_food') }}";
-  const userStateUrl   = "{{ url_for('user_state_api') }}";
-        window.MEALS = JSON.parse('{{ MEALS|tojson | safe }}');
+        // Safe JSON parse helpers to avoid runtime errors if server vars missing
+        function parseJSON(s, fallback){
+          try { return JSON.parse(s); } catch(e){ return fallback; }
+        }
+
+        const foodsByCat = parseJSON('{{ foods_by_cat|tojson | safe if foods_by_cat is defined else "{}" }}', {});
+        const USERNAME = "{{ username or '' }}";
+        const computeMealUrl = "{{ url_for('compute_meal') }}";
+        const computeDayUrl  = "{{ url_for('compute_day') }}";
+        const addFoodUrl     = "{{ url_for('add_food') }}";
+        const getFoodUrl     = "{{ url_for('get_food') }}";
+        const userStateUrl   = "{{ url_for('user_state_api') }}";
+        window.MEALS = parseJSON('{{ MEALS|tojson | safe if MEALS is defined else "[]" }}', []);
+        window.WEEK_DAYS = parseJSON('{{ WEEK_DAYS|tojson | safe if WEEK_DAYS is defined else "[]" }}', ["lunedi","martedi","mercoledi","giovedi","venerdi","sabato","domenica"]);
+        const WEEKLY_FROM_SERVER = parseJSON('{{ weekly_state|tojson | safe if weekly_state is defined else "{}" }}', {});
+        let currentDay = "{{ selected_day or '' }}";
+        if(!currentDay || !(window.WEEK_DAYS||[]).includes(currentDay)){
+          currentDay = (window.WEEK_DAYS && window.WEEK_DAYS[0]) || "lunedi";
+        }
+
+        // Build weekly state object (choices, fruit/veg ratios, splits per meal)
+        function emptyDayState(){
+          const o = {choices:{}, fruit_ratios:{}, veg_ratios:{}, splits_per_meal:{}};
+          (window.MEALS||[]).forEach(m=>{
+            o.choices[m] = {carboidrati:[], proteine:[], grassi:[], frutta:[], verdura:[]};
+            o.fruit_ratios[m] = 0.0; o.veg_ratios[m] = 0.0; o.splits_per_meal[m] = "";
+          });
+          return o;
+        }
+        const WEEKLY = {};
+        (window.WEEK_DAYS||[]).forEach(d=>{
+          const src = (WEEKLY_FROM_SERVER && WEEKLY_FROM_SERVER[d]) || {};
+          const day = emptyDayState();
+          (window.MEALS||[]).forEach(m=>{
+            const ch = ((src.choices||{})[m]) || {};
+            day.choices[m] = {
+              carboidrati: ch.carboidrati||[],
+              proteine: ch.proteine||[],
+              grassi: ch.grassi||[],
+              frutta: ch.frutta||[],
+              verdura: ch.verdura||[]
+            };
+            day.fruit_ratios[m] = parseFloat((src.fruit_ratios||{})[m]) || 0.0;
+            day.veg_ratios[m]   = parseFloat((src.veg_ratios||{})[m]) || 0.0;
+            const sp = (src.splits_per_meal||{})[m];
+            day.splits_per_meal[m] = Array.isArray(sp) ? sp.join("\n") : (sp||"");
+          });
+          WEEKLY[d] = day;
+        });
+
+        function loadDayToDOM(day){
+          const st = WEEKLY[day] || emptyDayState();
+          (window.MEALS||[]).forEach(m=>{
+            ['carboidrati','proteine','grassi','frutta','verdura'].forEach(cat=>{
+              const el = document.getElementById(`${m}_${cat}`);
+              if(el){ const arr = (st.choices[m] && st.choices[m][cat]) || []; el.value = arr.join(', '); }
+            });
+            const fr = document.querySelector(`input[name="${m}_fruit_ratio"]`);
+            const vr = document.querySelector(`input[name="${m}_veg_ratio"]`);
+            if(fr) fr.value = (st.fruit_ratios[m]||0).toString();
+            if(vr) vr.value = (st.veg_ratios[m]||0).toString();
+            const ta = document.getElementById(`splits_${m}`); if(ta) ta.value = st.splits_per_meal[m] || "";
+            const tot = document.getElementById(`totals_${m}`); if(tot) tot.innerHTML = '';
+            const pf  = document.getElementById(`perfood_${m}`); if(pf) pf.innerHTML = '';
+            const dg  = document.getElementById(`diag_${m}`); if(dg){ dg.innerHTML=''; dg.style.display='none'; }
+          });
+          updateDailyTotalsFromDOM();
+        }
+        function collectDOMToDay(day){
+          const st = WEEKLY[day] || emptyDayState();
+          (window.MEALS||[]).forEach(m=>{
+            const choices = {};
+            ['carboidrati','proteine','grassi','frutta','verdura'].forEach(cat=>{
+              const val = (document.getElementById(`${m}_${cat}`)?.value||'');
+              choices[cat] = val.split(',').map(s=>s.trim()).filter(Boolean);
+            });
+            st.choices[m] = choices;
+            st.fruit_ratios[m] = parseFloat(document.querySelector(`input[name="${m}_fruit_ratio"]`)?.value) || 0.0;
+            st.veg_ratios[m]   = parseFloat(document.querySelector(`input[name="${m}_veg_ratio"]`)?.value) || 0.0;
+            st.splits_per_meal[m] = document.getElementById(`splits_${m}`)?.value || "";
+          });
+          WEEKLY[day] = st;
+        }
+
+        // Setup week tabs and active highlight
+        const weekTabs = document.getElementById('weekTabs');
+        if(weekTabs){
+          weekTabs.querySelectorAll('button[data-day]').forEach(btn=>{
+            const d = btn.getAttribute('data-day');
+            if(d === currentDay){ btn.classList.add('active'); btn.setAttribute('aria-pressed','true'); }
+            btn.addEventListener('click', ()=>{
+              collectDOMToDay(currentDay);
+              weekTabs.querySelectorAll('button[data-day]').forEach(b=>{ b.classList.remove('active'); b.setAttribute('aria-pressed','false'); });
+              currentDay = d;
+              btn.classList.add('active'); btn.setAttribute('aria-pressed','true');
+              loadDayToDOM(currentDay);
+            });
+          });
+        }
 
         // autocomplete helpers
         function currentToken(val){
@@ -351,6 +469,7 @@
         }
 
         function readChoicesFor(meal){
+          // reads from DOM (current day is already loaded)
           const out = {};
           ['carboidrati','proteine','grassi','frutta','verdura'].forEach(cat=>{
             const val = (document.getElementById(`${meal}_${cat}`).value || '');
@@ -358,7 +477,6 @@
           });
           return out;
         }
-
         function readAllChoices(){
           const out = {};
           (window.MEALS || []).forEach(function(m){
@@ -366,7 +484,6 @@
           });
           return out;
         }
-
         function readSplitsPerMeal(){
           const out = {};
           (window.MEALS || []).forEach(function(m){
@@ -414,18 +531,20 @@
         }
 
         window.calcSingle = function(meal){
+          collectDOMToDay(currentDay); // keep WEEKLY updated
           const choices = readChoicesFor(meal);
-          const rawSplits = document.getElementById(`splits_${meal}`).value || "";
-          const sanitized = sanitizeSplitsText(rawSplits, choices.frutta, choices.verdura);
+          const rawSplits = document.getElementById(`splits_${meal}`)?.value || "";
+          const sanitized = sanitizeSplitsText(rawSplits, choices.frutta, choices.verdura); // ensure defined
 
           const payload = {
             meal: meal,
+            day: currentDay,
             calorie_tot: parseFloat(document.getElementById('calorie_tot').value) || 2000,
             perc_pasti: readPercPasti(),
             macro_pasti: readMacroPasti(),
             choices: choices,
-            fruit_ratio: parseFloat(document.querySelector(`input[name="${meal}_fruit_ratio"]`).value) || 0,
-            veg_ratio: parseFloat(document.querySelector(`input[name="${meal}_veg_ratio"]`).value) || 0,
+            fruit_ratio: parseFloat(document.querySelector(`input[name="${meal}_fruit_ratio"]`)?.value) || 0,
+            veg_ratio: parseFloat(document.querySelector(`input[name="${meal}_veg_ratio"]`)?.value) || 0,
             splits_text: sanitized.text,
             min_grams: parseFloat(document.getElementById('min_grams').value) || 0.0,
           };
@@ -435,19 +554,9 @@
             headers: {"Content-Type":"application/json"},
             body: JSON.stringify(payload)
           })
-          .then(async r=>{
-            const text = await r.text();
-            let data = null;
-            try{ data = text ? JSON.parse(text) : null; }catch(e){ /* not JSON */ }
-            if(!r.ok){
-              const msg = (data && (data.error || data.message)) || text || (`HTTP ${r.status}`);
-              throw new Error(msg);
-            }
-            if(data && data.error){
-              throw new Error(data.error);
-            }
-            return data;
-          })
+          .then(async r=>{ const t = await r.text(); try{ var d = t?JSON.parse(t):null; }catch(e){ var d=null; }
+                           if(!r.ok) throw new Error((d&& (d.error||d.message)) || t || ('HTTP '+r.status));
+                           if(d && d.error) throw new Error(d.error); return d; })
           .then(data=>{
             const t = data.totals || {};
             const totalsSpan = document.getElementById(`totals_${meal}`);
@@ -473,11 +582,12 @@
           })
           .catch(err=>{
             console.error(err);
-            alert('Errore calcolo pasto: ' + (err && err.message ? err.message : ''));
+            alert('Errore calcolo pasto: ' + (err?.message||''));
           });
         };
 
         window.calcDay = function(){
+          collectDOMToDay(currentDay);
           const allChoices = readAllChoices();
           const raw = readSplitsPerMeal();
           const sanitizedPerMeal = {};
@@ -487,12 +597,13 @@
           });
 
           const payload = {
+            day: currentDay,
             calorie_tot: parseFloat(document.getElementById('calorie_tot').value) || 2000,
             perc_pasti: readPercPasti(),
             macro_pasti: readMacroPasti(),
             choices: allChoices,
-            fruit_ratios: (function(){ const o={}; (window.MEALS || []).forEach(function(m){ o[m] = parseFloat(document.querySelector('input[name="'+m+'_fruit_ratio"]').value) || 0; }); return o; })(),
-            veg_ratios:   (function(){ const o={}; (window.MEALS || []).forEach(function(m){ o[m] = parseFloat(document.querySelector('input[name="'+m+'_veg_ratio"]').value) || 0; }); return o; })(),
+            fruit_ratios: (function(){ const o={}; (window.MEALS || []).forEach(function(m){ o[m] = parseFloat(document.querySelector('input[name="'+m+'_fruit_ratio"]')?.value) || 0; }); return o; })(),
+            veg_ratios:   (function(){ const o={}; (window.MEALS || []).forEach(function(m){ o[m] = parseFloat(document.querySelector('input[name="'+m+'_veg_ratio"]')?.value) || 0; }); return o; })(),
             splits_per_meal: sanitizedPerMeal,
             min_grams: parseFloat(document.getElementById('min_grams').value) || 0.0,
           };
@@ -502,19 +613,9 @@
             headers: {"Content-Type":"application/json"},
             body: JSON.stringify(payload)
           })
-          .then(async r=>{
-            const text = await r.text();
-            let data = null;
-            try{ data = text ? JSON.parse(text) : null; }catch(e){ /* not JSON */ }
-            if(!r.ok){
-              const msg = (data && (data.error || data.message)) || text || (`HTTP ${r.status}`);
-              throw new Error(msg);
-            }
-            if(data && data.error){
-              throw new Error(data.error);
-            }
-            return data;
-          })
+          .then(async r=>{ const t = await r.text(); try{ var d = t?JSON.parse(t):null; }catch(e){ var d=null; }
+                           if(!r.ok) throw new Error((d&& (d.error||d.message)) || t || ('HTTP '+r.status));
+                           if(d && d.error) throw new Error(d.error); return d; })
           .then(data=>{
             const res = data.results || {};
             for(const meal in res){
@@ -558,11 +659,11 @@
           })
           .catch(err=>{
             console.error(err);
-            alert('Errore calcolo giornata: ' + (err && err.message ? err.message : ''));
+            alert('Errore calcolo giornata: ' + (err?.message||''));
           });
         };
 
-        // === Persistenza locale dei dati iniziali (localStorage) ===
+        // === Persistenza locale ===
         function persistKeyFor(el){
           const ns = USERNAME ? ('user:' + USERNAME + ':') : '';
           if(el.name && el.name.trim()) return 'persist:' + ns + 'name:' + el.name.trim();
@@ -598,18 +699,17 @@
           });
         }
 
-  // Ripristina subito i valori salvati e attiva il salvataggio automatico
-        restorePersisted();
+        // Ripristina e setup
+        // restorePersisted(); // opzionale: abilita se vuoi ripristino locale
         attachPersistHandlers();
-
-        // inizializza visuale
+        loadDayToDOM(currentDay);
         updateDailyTotalsFromDOM();
-        // assicurati che non ci sia testo residuo nei totali o nelle liste per pasto
         document.querySelectorAll('[id^="totals_"]').forEach(el => { el.innerHTML = ''; });
         document.querySelectorAll('[id^="perfood_"]').forEach(el => { el.innerHTML = ''; });
 
         // Salvataggio stato utente lato server (sessione utente)
         async function saveUserState(){
+          collectDOMToDay(currentDay);
           const status = document.getElementById('save_state_status');
           status.textContent = '';
           const payload = {
@@ -620,12 +720,16 @@
               prot:  parseFloat(document.getElementById('macro_tot_prot').value) || 0.3,
               fat:   parseFloat(document.getElementById('macro_tot_fat').value) || 0.2,
             },
-            macro_pasti: readMacroPasti(),
+            macro_pasti: readMacroPasti(), // shared across the week
+            // keep current-day fields for backward compatibility
             choices: readAllChoices(),
             fruit_ratios: (function(){ const o={}; (window.MEALS || []).forEach(function(m){ o[m] = parseFloat(document.querySelector('input[name="'+m+'_fruit_ratio"]').value) || 0; }); return o; })(),
             veg_ratios:   (function(){ const o={}; (window.MEALS || []).forEach(function(m){ o[m] = parseFloat(document.querySelector('input[name="'+m+'_veg_ratio"]').value) || 0; }); return o; })(),
             splits_per_meal: (function(){ const o={}; (window.MEALS || []).forEach(function(m){ o[m] = document.getElementById('splits_' + m).value || ''; }); return o; })(),
             min_grams: parseFloat(document.getElementById('min_grams').value) || 0.0,
+            // NEW: full weekly state and selected day
+            weekly: WEEKLY,
+            selected_day: currentDay,
           };
           try{
             const r = await fetch(userStateUrl, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
