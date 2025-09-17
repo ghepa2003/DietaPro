@@ -509,6 +509,43 @@
         function normalizeName(s){
           return (s || '').trim().toLowerCase().replace(/\s+/g,' ');
         }
+
+        // NEW: map split tokens to closest names among selected main foods (carbo/prot/fat)
+        function normalizeSplitNames(text, choices){
+          const mainCats = ['carboidrati','proteine','grassi'];
+          const pool = [];
+          mainCats.forEach(cat => (choices[cat] || []).forEach(n => pool.push(n)));
+          if(pool.length === 0) return text || '';
+          const poolNorm = pool.map(name => ({ name, key: normalizeName(name) }));
+
+          function bestMatch(tok){
+            const k = normalizeName(tok);
+            if(!k) return tok;
+            // exact
+            let cand = poolNorm.find(p => p.key === k);
+            if(cand) return cand.name;
+            // startsWith
+            cand = poolNorm.find(p => p.key.startsWith(k));
+            if(cand) return cand.name;
+            // contains
+            cand = poolNorm.find(p => p.key.includes(k));
+            if(cand) return cand.name;
+            return tok; // fallback: keep as-is
+          }
+
+          return (text || '').split(/\r?\n/).map(line=>{
+            const raw = line.trim();
+            if(!raw) return line;
+            const idx = raw.indexOf('=');
+            const left = idx >= 0 ? raw.slice(0, idx) : raw;
+            const right = idx >= 0 ? raw.slice(idx+1) : '';
+            const parts = left.split(',').map(s => s.trim()).filter(Boolean);
+            if(parts.length < 2) return line;
+            const mapped = parts.map(bestMatch);
+            return mapped.join(',') + (idx >= 0 ? '=' + right : '');
+          }).join('\n');
+        }
+
         function sanitizeSplitsText(text, fruitList, vegList){
           const fruitSet = new Set((fruitList||[]).map(normalizeName));
           const vegSet   = new Set((vegList||[]).map(normalizeName));
@@ -530,11 +567,35 @@
           return { text: kept.join('\n'), removed };
         }
 
+        // NEW: auto-equal split for proteins (keeps up to 3 protein items present)
+        function generateAutoSplitForProteins(choices, existingSplitsText){
+          const prot = (choices && choices.proteine) ? choices.proteine.filter(Boolean) : [];
+          if(prot.length < 2) return '';
+          // if existing splits already reference >=2 protein names together, skip
+          const existing = (existingSplitsText||'').split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+          const protSet = new Set(prot.map(normalizeName));
+          for(const line of existing){
+            const left = (line.split('=')[0]||'').split(',').map(s=>normalizeName(s)).filter(Boolean);
+            const countProt = left.reduce((acc,n)=> acc + (protSet.has(n)?1:0), 0);
+            if(countProt >= 2) return ''; // user already defined a protein split
+          }
+          const n = Math.min(prot.length, 3);
+          const names = prot.slice(0, n);
+          // equal perc summing to 100
+          const base = Math.floor(100 / n);
+          const rem = 100 - base*n;
+          const percs = Array.from({length:n}, (_,i)=> base + (i < rem ? 1 : 0));
+          return `${names.join(',')}=${percs.join(',')}`;
+        }
+
         window.calcSingle = function(meal){
           collectDOMToDay(currentDay); // keep WEEKLY updated
           const choices = readChoicesFor(meal);
           const rawSplits = document.getElementById(`splits_${meal}`)?.value || "";
-          const sanitized = sanitizeSplitsText(rawSplits, choices.frutta, choices.verdura); // ensure defined
+          const sanitized = sanitizeSplitsText(rawSplits, choices.frutta, choices.verdura);
+          const normalizedSplits = normalizeSplitNames(sanitized.text, choices);
+          const autoProtSplit = generateAutoSplitForProteins(choices, normalizedSplits); // NEW
+          const splitsToSend = [normalizedSplits, autoProtSplit].filter(Boolean).join('\n'); // NEW
 
           const payload = {
             meal: meal,
@@ -545,7 +606,7 @@
             choices: choices,
             fruit_ratio: parseFloat(document.querySelector(`input[name="${meal}_fruit_ratio"]`)?.value) || 0,
             veg_ratio: parseFloat(document.querySelector(`input[name="${meal}_veg_ratio"]`)?.value) || 0,
-            splits_text: sanitized.text,
+            splits_text: splitsToSend, // CHANGED
             min_grams: parseFloat(document.getElementById('min_grams').value) || 0.0,
           };
 
@@ -593,7 +654,9 @@
           const sanitizedPerMeal = {};
           (window.MEALS || []).forEach(function(m){
             const s = sanitizeSplitsText(raw[m] || "", allChoices[m]?.frutta || [], allChoices[m]?.verdura || []);
-            sanitizedPerMeal[m] = s.text;
+            const norm = normalizeSplitNames(s.text, allChoices[m]);
+            const autoProtSplit = generateAutoSplitForProteins(allChoices[m], norm); // NEW
+            sanitizedPerMeal[m] = [norm, autoProtSplit].filter(Boolean).join('\n');  // CHANGED
           });
 
           const payload = {

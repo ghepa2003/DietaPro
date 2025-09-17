@@ -1,15 +1,377 @@
 {
+  "macro_tot": {
+    "carbo": 0.5,
+    "prot": 0.3,
+    "fat": 0.2
+  },
+  "fruit_ratios": {
+    "colazione": 0.05,
+    "pranzo": 0.05,
+    "cena": 0.05
+  },
+  "weekly": {
+    "lunedi": {
+      "choices": {
+        "colazione": {
+          "carboidrati": [
+            "muesli"
+          ],
+          "proteine": [
+            "yogurt greco"
+          ],
+          "grassi": [
+            "frutta secca mix"
+          ],
+          "frutta": [
+            "marmellata light"
+          ],
+          "verdura": []
+        },
+        "pranzo": {
+          "carboidrati": [
+            "riso basmati"
+          ],
+          "proteine": [
+            "tacchino"
+          ],
+          "grassi": [
+            "olio d'oliva"
+          ],
+          "frutta": [],
+          "verdura": []
+        },
+        "cena": {
+          "carboidrati": [
+            "pane di segale"
+          ],
+          "proteine": [
+            "tofu"
+          ],
+          "grassi": [
+            "olio d'oliva"
+          ],
+          "frutta": [],
+          "verdura": []
+        }
+      },
+      "fruit_ratios": {
+        "colazione": 0.05,
+        "pranzo": 0.05,
+        "cena": 0.05
+      },
+      "veg_ratios": {
+        "colazione": 0,
+        "pranzo": 0,
+        "cena": 0
+      },
+      "splits_per_meal": {
+        "colazione": "",
+        "pranzo": "",
+        "cena": ""
+      }
+    },
+    "martedi": {
+      "choices": {
+        "colazione": {
+          "carboidrati": [],
+          "proteine": [],
+          "grassi": [],
+          "frutta": [],
+          "verdura": []
+        },
+        "pranzo": {
+          "carboidrati": [],
+          "proteine": [],
+          "grassi": [],
+          "frutta": [],
+          "verdura": []
+        },
+        "cena": {
+          "carboidrati": [],
+          "proteine": [],
+          "grassi": [],
+          "frutta": [],
+          "verdura": []
+        }
+      },
+      "fruit_ratios": {
+        "colazione": 0,
+        "pranzo": 0,
+        "cena": 0
+      },
+      "veg_ratios": {
+        "colazione": 0,
+        "pranzo": 0,
+        "cena": 0
+      },
+      "splits_per_meal": {
+        "colazione": "",
+        "pranzo": "",
+        "cena": ""
+      }
+    },
+    "mercoledi": {
+      "choices": {
+        "colazione": {
+          "carboidrati": [],
+          "proteine": [],
+          "grassi": [],
+          "frutta": [],
+          "verdura": []
+        },
+        "pranzo": {
+          "carboidrati": [],
+          "proteine": [],
+          "grassi": [],
+          "frutta": [],
+          "verdura": []
+        },
+        "cena": {
+          "carboidrati": [],
+          "proteine": [],
+          "grassi": [],
+          "frutta": [],
+          "verdura": []
+        }
+      },
+      "fruit_ratios": {
+        "colazione": 0,
+        "pranzo": 0,
+        "cena": 0
+      },
+      "veg_ratios": {
+        "colazione": 0,
+        "pranzo": 0,
+        "cena": 0
+      },
+      "splits_per_meal": {
+        "colazione": "",
+        "pranzo": "",
+        "cena": ""
+      }
+    },
+    "giovedi": {
+      "choices": {
+        "colazione": {
+          "carboidrati": [],
+          "proteine": [],
+          "grassi": [],
+          "frutta": [],
+          "verdura": []
+        },
+        "pranzo": {
+          "carboidrati": [],
+          "proteine": [],
+          "grassi": [],
+          "frutta": [],
+          "verdura": []
+        },
+        "cena": {
+          "carboidrati": [],
+          "proteine": [],
+          "grassi": [],
+          "frutta": [],
+          "verdura": []
+        }
+      },
+      "fruit_ratios": {
+        "colazione": 0,
+        "pranzo": 0,
+        "cena": 0
+      },
+      "veg_ratios": {
+        "colazione": 0,
+        "pranzo": 0,
+        "cena": 0
+      },
+      "splits_per_meal": {
+        "colazione": "",
+        "pranzo": "",
+        "cena": ""
+      }
+    },
+    "venerdi": {
+      "choices": {
+        "colazione": {
+          "carboidrati": [],
+          "proteine": [],
+          "grassi": [],
+          "frutta": [],
+          "verdura": []
+        },
+        "pranzo": {
+          "carboidrati": [],
+          "proteine": [],
+          "grassi": [],
+          "frutta": [],
+          "verdura": []
+        },
+        "cena": {
+          "carboidrati": [],
+          "proteine": [],
+          "grassi": [],
+          "frutta": [],
+          "verdura": []
+        }
+      },
+      "fruit_ratios": {
+        "colazione": 0,
+        "pranzo": 0,
+        "cena": 0
+      },
+      "veg_ratios": {
+        "colazione": 0,
+        "pranzo": 0,
+        "cena": 0
+      },
+      "splits_per_meal": {
+        "colazione": "",
+        "pranzo": "",
+        "cena": ""
+      }
+    },
+    "sabato": {
+      "choices": {
+        "colazione": {
+          "carboidrati": [],
+          "proteine": [],
+          "grassi": [],
+          "frutta": [],
+          "verdura": []
+        },
+        "pranzo": {
+          "carboidrati": [],
+          "proteine": [],
+          "grassi": [],
+          "frutta": [],
+          "verdura": []
+        },
+        "cena": {
+          "carboidrati": [],
+          "proteine": [],
+          "grassi": [],
+          "frutta": [],
+          "verdura": []
+        }
+      },
+      "fruit_ratios": {
+        "colazione": 0,
+        "pranzo": 0,
+        "cena": 0
+      },
+      "veg_ratios": {
+        "colazione": 0,
+        "pranzo": 0,
+        "cena": 0
+      },
+      "splits_per_meal": {
+        "colazione": "",
+        "pranzo": "",
+        "cena": ""
+      }
+    },
+    "domenica": {
+      "choices": {
+        "colazione": {
+          "carboidrati": [],
+          "proteine": [],
+          "grassi": [],
+          "frutta": [],
+          "verdura": []
+        },
+        "pranzo": {
+          "carboidrati": [],
+          "proteine": [],
+          "grassi": [],
+          "frutta": [],
+          "verdura": []
+        },
+        "cena": {
+          "carboidrati": [],
+          "proteine": [],
+          "grassi": [],
+          "frutta": [],
+          "verdura": []
+        }
+      },
+      "fruit_ratios": {
+        "colazione": 0,
+        "pranzo": 0,
+        "cena": 0
+      },
+      "veg_ratios": {
+        "colazione": 0,
+        "pranzo": 0,
+        "cena": 0
+      },
+      "splits_per_meal": {
+        "colazione": "",
+        "pranzo": "",
+        "cena": ""
+      }
+    }
+  },
   "splits_per_meal": {
     "colazione": "",
     "pranzo": "",
     "cena": ""
   },
   "min_grams": 0,
+  "choices": {
+    "colazione": {
+      "carboidrati": [
+        "muesli"
+      ],
+      "proteine": [
+        "yogurt greco"
+      ],
+      "grassi": [
+        "frutta secca mix"
+      ],
+      "frutta": [
+        "marmellata light"
+      ],
+      "verdura": []
+    },
+    "pranzo": {
+      "carboidrati": [
+        "riso basmati"
+      ],
+      "proteine": [
+        "tacchino"
+      ],
+      "grassi": [
+        "olio d'oliva"
+      ],
+      "frutta": [],
+      "verdura": []
+    },
+    "cena": {
+      "carboidrati": [
+        "pane di segale"
+      ],
+      "proteine": [
+        "tofu"
+      ],
+      "grassi": [
+        "olio d'oliva"
+      ],
+      "frutta": [],
+      "verdura": []
+    }
+  },
   "veg_ratios": {
     "colazione": 0,
     "pranzo": 0,
     "cena": 0
   },
+  "selected_day": "lunedi",
+  "perc_pasti": {
+    "colazione": 0.3,
+    "pranzo": 0.35,
+    "cena": 0.35
+  },
+  "calorie_tot": 2000,
   "macro_pasti": {
     "colazione": {
       "carbo": 0.48,
@@ -26,44 +388,5 @@
       "prot": 0.34,
       "fat": 0.17
     }
-  },
-  "choices": {
-    "colazione": {
-      "carboidrati": [],
-      "proteine": [],
-      "grassi": [],
-      "frutta": [],
-      "verdura": []
-    },
-    "pranzo": {
-      "carboidrati": [],
-      "proteine": [],
-      "grassi": [],
-      "frutta": [],
-      "verdura": []
-    },
-    "cena": {
-      "carboidrati": [],
-      "proteine": [],
-      "grassi": [],
-      "frutta": [],
-      "verdura": []
-    }
-  },
-  "calorie_tot": 1750,
-  "macro_tot": {
-    "carbo": 0.5,
-    "prot": 0.3,
-    "fat": 0.2
-  },
-  "perc_pasti": {
-    "colazione": 0.3,
-    "pranzo": 0.35,
-    "cena": 0.35
-  },
-  "fruit_ratios": {
-    "colazione": 0.05,
-    "pranzo": 0.05,
-    "cena": 0.05
   }
 }

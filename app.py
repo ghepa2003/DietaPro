@@ -423,6 +423,109 @@ def parse_splits(text):
                     continue
     return out or None
 
+# NEW: helpers for split handling
+def _has_same_category_split(local_splits, category: str) -> bool:
+    if not local_splits:
+        return False
+    wanted = {"carboidrati","proteine","grassi"}
+    for names in local_splits.keys():
+        cats = set()
+        for n in names:
+            c, _ = _find_cat_and_nut(n)
+            if c in wanted:
+                cats.add(c)
+        if cats == {category} and len(names) >= 2:
+            return True
+    return False
+
+def _enforce_split_presence(per_food_serial, local_splits, floor: float = 1.0):
+    """
+    Ensure each item referenced in a same-category split has at least 'floor' grams.
+    Grams are redistributed within the same category (taking from largest donors).
+    Returns (new_per_food_serial, new_totals) or None if no changes.
+    """
+    if not local_splits or floor <= 0:
+        return None
+    # Map current items
+    items = {}  # name -> {grams, cat}
+    order = []  # preserve order for stable output
+    for it in per_food_serial:
+        nm = str(it.get("nome"))
+        if nm not in items:
+            order.append(nm)
+        cat, _ = _find_cat_and_nut(nm)
+        items[nm] = {"grams": float(it.get("grammi") or 0.0), "cat": cat}
+
+    changed = False
+    main_cats = {"carboidrati","proteine","grassi"}
+    for names, _ratio in local_splits.items():
+        # Determine category set
+        cats = set()
+        for n in names:
+            c, _ = _find_cat_and_nut(n)
+            if c in main_cats:
+                cats.add(c)
+        if len(cats) != 1:
+            continue  # only enforce on pure same-category splits
+        cat = cats.pop()
+        # Ensure all referenced names exist in items map
+        for n in names:
+            if n not in items:
+                c, _ = _find_cat_and_nut(n)
+                if c == cat:
+                    items[n] = {"grams": 0.0, "cat": c}
+                    order.append(n)
+        # Compute needed increases
+        needs = []
+        for n in names:
+            rec = items.get(n)
+            if not rec or rec["cat"] != cat:
+                continue
+            g = rec["grams"]
+            if g + 1e-9 < floor:
+                needs.append((n, floor - g))
+        if not needs:
+            continue
+        # Build donors in same category (prefer those not in the split, then the largest)
+        donors = [(n, rec["grams"]) for n, rec in items.items() if rec["cat"] == cat and n not in names]
+        if not donors:
+            donors = [(n, items[n]["grams"]) for n in names]  # fallback: take from within the split
+        donors.sort(key=lambda t: t[1], reverse=True)
+        # Redistribute
+        for n, delta in needs:
+            remaining = delta
+            for i, (dn, dg) in enumerate(donors):
+                if remaining <= 0:
+                    break
+                take = min(dg, remaining)
+                if take > 0:
+                    items[dn]["grams"] = max(0.0, items[dn]["grams"] - take)
+                    dg -= take
+                    donors[i] = (dn, dg)
+                    items[n]["grams"] += take
+                    remaining -= take
+            # If still remaining, just set it (may increase total slightly; mixed-macro correction will handle)
+            if remaining > 1e-9:
+                items[n]["grams"] += remaining
+                changed = True
+
+    if not changed:
+        return None
+
+    # Build new per_food list (preserve existing order, then any new referenced items)
+    new_list = []
+    seen = set()
+    # Keep only main-category items and any others already present
+    for nm in order:
+        rec = items.get(nm)
+        if not rec:
+            continue
+        seen.add(nm)
+        new_list.append((nm, rec["grams"]))
+    # Recompute totals using DB nutrients
+    new_per_food, new_totals = _recompute_items_and_totals(new_list)
+    return new_per_food, new_totals
+
 def build_foods_by_category():
     # Safe sort keys as lowercase strings, skip empties
     def safe_sorted_keys(d):
@@ -554,29 +657,31 @@ def compute_meal():
     except Exception:
         min_grams = 0.0
     splits_text = data.get("splits_text", "")
-
     local_splits = parse_splits(splits_text)
+
+    # NEW: effective min_grams (ensure small floor when same-category protein split exists)
+    has_prot_split = _has_same_category_split(local_splits, "proteine")
+    min_grams_eff = max(min_grams, 1.0) if has_prot_split else min_grams
 
     scelti, sol, quant_frutta, quant_verdura = calcola_dieta(
         cal_pasto, macro_for_meal, choices,
         carbo_db=carbo_db, prot_db=prot_db, grassi_db=grassi_db,
         frutta_db=frutta_db, verdura_db=verdura_db,
         fruit_ratio=fruit_ratio, veg_ratio=veg_ratio,
-    min_grams=min_grams
+        min_grams=min_grams_eff  # CHANGED
     )
 
     if local_splits:
         sol_bilanciata, info = bilancia_conservando_macros(
             scelti, sol, local_splits,
             carbo_db, prot_db, grassi_db, frutta_db, verdura_db,
-            min_grams=min_grams
+            min_grams=min_grams_eff  # CHANGED
         )
     else:
         sol_bilanciata = sol.copy() if hasattr(sol, "copy") else sol
         info = {"skipped": True}
 
     per_food, totals = calcola_calorie(scelti, sol_bilanciata, carbo_db, prot_db, grassi_db, frutta_db, verdura_db)
-
     per_food_serial = []
     for p in per_food:
         per_food_serial.append({
@@ -617,6 +722,14 @@ def compute_meal():
 
     totals_serial = {k: float(totals.get(k, 0.0)) for k in ("kcal", "carbo", "proteine", "grassi")}
 
+    # NEW: enforce presence for split-referenced items before macro correction
+    try:
+        enforced = _enforce_split_presence(per_food_serial, local_splits, floor=min_grams_eff if min_grams_eff > 0 else 1.0)
+    except Exception:
+        enforced = None
+    if enforced:
+        per_food_serial, totals_serial = enforced
+
     # Attempt mixed-macro correction (skips if not applicable)
     try:
         corr = _apply_mixed_macro_correction(per_food_serial, cal_pasto, macro_for_meal, local_splits)
@@ -624,7 +737,6 @@ def compute_meal():
         corr = None
     if corr:
         per_food_serial, totals_serial, corr_meta = corr
-        # enrich info
         if isinstance(info, dict):
             info["mixed_macro_correction"] = corr_meta
 
@@ -700,23 +812,27 @@ def compute_day():
 
         local_splits = parse_splits(splits_txt)
 
+        # NEW: effective min_grams for protein split
+        has_prot_split = _has_same_category_split(local_splits, "proteine")
+        min_grams_eff = max(min_grams, 1.0) if has_prot_split else min_grams
+
         scelti, sol, quant_frutta, quant_verdura = calcola_dieta(
             cal_pasto, macro_for_meal, choices,
             carbo_db=carbo_db, prot_db=prot_db, grassi_db=grassi_db,
             frutta_db=frutta_db, verdura_db=verdura_db,
             fruit_ratio=fruit_ratio, veg_ratio=veg_ratio
-            , min_grams=min_grams
+            , min_grams=min_grams_eff  # CHANGED
         )
 
         if local_splits:
-            sol_bilanciata, info = bilancia_conservando_macros(scelti, sol, local_splits, carbo_db, prot_db, grassi_db, frutta_db, verdura_db, min_grams=min_grams)
+            sol_bilanciata, info = bilancia_conservando_macros(
+                scelti, sol, local_splits, carbo_db, prot_db, grassi_db, frutta_db, verdura_db, min_grams=min_grams_eff  # CHANGED
+            )
         else:
             sol_bilanciata = sol.copy() if hasattr(sol, "copy") else sol
             info = {"skipped": True}
 
         per_food, totals = calcola_calorie(scelti, sol_bilanciata, carbo_db, prot_db, grassi_db, frutta_db, verdura_db)
-
-        # costruisco per_food seriale e includo frutta/verdura come voci se presenti
         per_food_serial = [
             {"nome": p.get("nome"), "grammi": float(p.get("grammi") or 0), "kcal": float(p.get("kcal") or 0),
              "carbo": float(p.get("carbo") or 0), "proteine": float(p.get("proteine") or 0), "grassi": float(p.get("grassi") or 0)}
@@ -750,6 +866,14 @@ def compute_day():
                 grassi = float(nut.get("grassi", 0.0)) * grams / 100.0
                 per_food_serial.append({"nome": vd, "grammi": grams, "kcal": kcal, "carbo": carbo, "proteine": proteine, "grassi": grassi})
                 totals["kcal"] += kcal; totals["carbo"] += carbo; totals["proteine"] += proteine; totals["grassi"] += grassi
+
+        # NEW: enforce split presence before macro correction
+        try:
+            enforced = _enforce_split_presence(per_food_serial, local_splits, floor=min_grams_eff if min_grams_eff > 0 else 1.0)
+        except Exception:
+            enforced = None
+        if enforced:
+            per_food_serial, totals = enforced
 
         # Apply mixed-macro correction for this meal (skips if not applicable)
         try:
