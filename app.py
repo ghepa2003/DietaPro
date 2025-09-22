@@ -3,7 +3,7 @@ from DietaProg_functions import importa_db, calcola_dieta, bilancia_conservando_
 import os
 import pandas as pd
 from openpyxl import load_workbook
-from werkzeug.security import generate_password_hash, check_password_hash  # NEW
+from werkzeug.security import generate_password_hash, check_password_hash
 
 
 app = Flask(__name__, template_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates'))
@@ -12,14 +12,28 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-change-me")
 
 # Base directory for data files (supports env override)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.environ.get("DIETAPRO_DATA_DIR", BASE_DIR)
+DATA_DIR = os.environ.get("DIETAPRO_DATA_DIR", BASE_DIR)  # keep for Excel and static data
 
-# Directory for per-user persisted state
-USER_DATA_DIR = os.path.join(DATA_DIR, "user_data")
+# NEW: dedicated persistent state directory (outside repo by default)
+STATE_DIR = os.environ.get("DIETAPRO_STATE_DIR", os.path.join(os.path.expanduser("~"), ".dieta_pro"))
+os.makedirs(STATE_DIR, exist_ok=True)
+
+# Directory for per-user persisted state (under STATE_DIR)
+USER_DATA_DIR = os.path.join(STATE_DIR, "user_data")
 os.makedirs(USER_DATA_DIR, exist_ok=True)
 
 # ===== Users registry (account + 4-digit PIN) =====
-USERS_DB_FILE = os.path.join(USER_DATA_DIR, "_users.json")
+USERS_DB_FILE = os.path.join(STATE_DIR, "users.json")  # moved under STATE_DIR
+
+def _atomic_write_json(path: str, payload: dict):
+    import json, tempfile
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_path, path)
 
 def _load_users() -> dict:
     try:
@@ -28,7 +42,6 @@ def _load_users() -> dict:
             with open(USERS_DB_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f) or {}
                 users = data.get("users") or {}
-                # normalize keys (already sanitized at save)
                 return {str(k): v for k, v in users.items()}
     except Exception as e:
         print(f"[WARN] _load_users failed: {e}")
@@ -36,10 +49,7 @@ def _load_users() -> dict:
 
 def _save_users(users: dict) -> None:
     try:
-        import json
-        os.makedirs(USER_DATA_DIR, exist_ok=True)
-        with open(USERS_DB_FILE, "w", encoding="utf-8") as f:
-            json.dump({"users": users or {}}, f, ensure_ascii=False, indent=2)
+        _atomic_write_json(USERS_DB_FILE, {"users": users or {}})
     except Exception as e:
         print(f"[WARN] _save_users failed: {e}")
 
@@ -159,9 +169,7 @@ def load_user_state(username: str) -> dict:
 def save_user_state(username: str, data: dict) -> None:
     try:
         p = _user_state_path(username)
-        import json
-        with open(p, "w", encoding="utf-8") as f:
-            json.dump(data or {}, f, ensure_ascii=False, indent=2)
+        _atomic_write_json(p, data or {})
     except Exception as e:
         print(f"[WARN] save_user_state failed for {username}: {e}")
 
@@ -957,7 +965,14 @@ def healthz():
     try:
         # minimal check: DBs loaded and template exists
         _ = build_foods_by_category()
-        return {"ok": True}, 200
+        # NEW: verify state dir is writable
+        test_path = os.path.join(STATE_DIR, ".writetest")
+        with open(test_path, "w", encoding="utf-8") as f:
+            f.write("ok")
+            f.flush()
+            os.fsync(f.fileno())
+        os.remove(test_path)
+        return {"ok": True, "state_dir": STATE_DIR}, 200
     except Exception as e:
         return {"ok": False, "error": str(e)}, 500
 
