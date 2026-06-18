@@ -34,6 +34,10 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
 
+# Assicura che le tabelle vengano create se non esistono (fondamentale per Vercel serverless / db temporaneo)
+with app.app_context():
+    db.create_all()
+
 # OAuth Configuration
 oauth = OAuth(app)
 google = oauth.register(
@@ -642,6 +646,40 @@ def shopping_list():
 
         return jsonify({"shopping_list": result})
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/seed", methods=["GET"])
+def api_seed():
+    import pandas as pd
+    excel_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'alimenti.xlsx')
+    if not os.path.exists(excel_path):
+        return jsonify({"error": "File Excel non trovato"}), 404
+
+    try:
+        db.session.query(Food).delete()
+        excel = pd.ExcelFile(excel_path)
+        for sheet in excel.sheet_names:
+            df = pd.read_excel(excel_path, sheet_name=sheet)
+            df.columns = [str(c).lower().strip() for c in df.columns]
+            for _, row in df.iterrows():
+                try:
+                    nome = str(row['alimenti']).strip()
+                    if pd.isna(row['alimenti']) or not nome: continue
+                    food = Food(
+                        nome=nome,
+                        categoria=sheet.lower(),
+                        calorie=float(row.get('kcal', 0.0)) if not pd.isna(row.get('kcal', 0.0)) else 0.0,
+                        carboidrati=float(row.get('carbo', 0.0)) if not pd.isna(row.get('carbo', 0.0)) else 0.0,
+                        proteine=float(row.get('pro', 0.0)) if not pd.isna(row.get('pro', 0.0)) else 0.0,
+                        grassi=float(row.get('grassi', 0.0)) if not pd.isna(row.get('grassi', 0.0)) else 0.0
+                    )
+                    db.session.add(food)
+                except Exception as ex:
+                    print(f"Skipping {row.get('alimenti')}: {ex}")
+        db.session.commit()
+        return jsonify({"success": "Database alimenti popolato correttamente!"})
+    except Exception as e:
+        db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
