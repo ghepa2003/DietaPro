@@ -357,9 +357,22 @@ def compute_meal():
         data = request.get_json()
         if not data:
             return jsonify({"error": "No JSON payload"}), 400
+        meal = data.get("meal", "colazione")
+        calorie_tot = float(data.get("calorie_tot", 2000.0))
+        perc_pasti = data.get("perc_pasti", {})
+        macro_tot = data.get("macro_tot", {"carbo":0.5, "prot":0.3, "fat":0.2})
+        locked_macros = data.get("locked_macros", {})
         
-        cal_pasto = float(data.get("cal_pasto", 500.0))
-        macro_for_meal = data.get("macro_for_meal", {"carbo":0.5, "prot":0.3, "fat":0.2})
+        derived_macros = deriva_macro_pasto(macro_tot, perc_pasti, locked_macros)
+        macro_for_meal = derived_macros.get(meal, {"carbo":0.5, "prot":0.3, "fat":0.2})
+        
+        try:
+            s = sum(float(v) for v in perc_pasti.values()) or 1.0
+        except Exception:
+            s = 1.0
+        perc = (float(perc_pasti.get(meal, 0.0)) / s) if s else 0.0
+        cal_pasto = calorie_tot * perc
+
         choices = data.get("choices", {})
         fruit_ratio = float(data.get("fruit_ratio", 0.0))
         veg_ratio = float(data.get("veg_ratio", 0.0))
@@ -434,6 +447,7 @@ def compute_meal():
             "kcal_delta":     float(kcal_delta),
             "macro_kcal":     macro_kcal_sum,
             "macro_breakdown": macro_breakdown,
+            "derived_macros": derived_macros,
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -455,15 +469,14 @@ def compute_day():
         perc_pasti = {k: float(v) / s for k, v in perc_pasti.items()}
 
         macro_tot = data.get("macro_tot", {"carbo":0.5, "prot":0.3, "fat":0.2})
-        day_state = data.get("day_state", {})
         locked_macros = data.get("locked_macros", {})
 
-        choices_all = day_state.get("choices", {})
-        fruit_ratios = day_state.get("fruit_ratios", {}) or {}
-        veg_ratios = day_state.get("veg_ratios", {}) or {}
-        min_grams = day_state.get("min_grams", 10.0)
-        food_constraints_all = day_state.get("food_constraints", {}) or {}
-        splits_per_meal_all = day_state.get("splits_per_meal", {}) or {}
+        choices_all = data.get("choices", {})
+        fruit_ratios = data.get("fruit_ratios", {}) or {}
+        veg_ratios = data.get("veg_ratios", {}) or {}
+        min_grams = data.get("min_grams", 10.0)
+        food_constraints_all = data.get("food_constraints", {}) or {}
+        splits_per_meal_all = data.get("splits_per_meal", {}) or {}
 
         derived_macros = deriva_macro_pasto(macro_tot, perc_pasti, locked_macros)
         carbo_db, prot_db, grassi_db, frutta_db, verdura_db = load_dbs()
