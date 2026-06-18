@@ -714,19 +714,19 @@ def api_seed():
             df.columns = [str(c).lower().strip() for c in df.columns]
             for _, row in df.iterrows():
                 try:
-                    nome = str(row['alimenti']).strip()
-                    if pd.isna(row['alimenti']) or not nome: continue
+                    nome = str(row['nome']).strip() if 'nome' in row else ''
+                    if pd.isna(row.get('nome')) or not nome: continue
                     food = Food(
                         nome=nome,
                         categoria=sheet.lower(),
-                        calorie=float(row.get('kcal', 0.0)) if not pd.isna(row.get('kcal', 0.0)) else 0.0,
-                        carboidrati=float(row.get('carbo', 0.0)) if not pd.isna(row.get('carbo', 0.0)) else 0.0,
-                        proteine=float(row.get('pro', 0.0)) if not pd.isna(row.get('pro', 0.0)) else 0.0,
+                        calorie=float(row.get('calorie', 0.0)) if not pd.isna(row.get('calorie', 0.0)) else 0.0,
+                        carboidrati=float(row.get('carboidrati', 0.0)) if not pd.isna(row.get('carboidrati', 0.0)) else 0.0,
+                        proteine=float(row.get('proteine', 0.0)) if not pd.isna(row.get('proteine', 0.0)) else 0.0,
                         grassi=float(row.get('grassi', 0.0)) if not pd.isna(row.get('grassi', 0.0)) else 0.0
                     )
                     db.session.add(food)
                 except Exception as ex:
-                    print(f"Skipping {row.get('alimenti')}: {ex}")
+                    print(f"Skipping {row.get('nome')}: {ex}")
         db.session.commit()
         return jsonify({"success": "Database alimenti popolato correttamente!"})
     except Exception as e:
