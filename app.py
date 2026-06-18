@@ -17,7 +17,14 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-change-me")
 # Database Configuration
 if os.environ.get("VERCEL"):
     # Vercel Postgres usually exposes POSTGRES_URL
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("POSTGRES_URL")
+    db_url = os.environ.get("POSTGRES_URL")
+    if db_url and db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+    
+    # Se per caso non è stato ancora configurato il DB su Vercel, mettiamo un fallback
+    if not db_url:
+        db_url = "sqlite:////tmp/local.db"
+    app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 else:
     # Local SQLite fallback
     local_db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "local.db")
