@@ -135,7 +135,7 @@ def login():
                 err = "Nome utente già utilizzato"
                 return render_template("login.html", error=err), 400
             # create user with hashed PIN
-            new_user = User(username=username, password_hash=generate_password_hash(str(pin)))
+            new_user = User(username=username, pin_hash=generate_password_hash(str(pin)))
             db.session.add(new_user)
             db.session.commit()
             session["user_id"] = new_user.id
@@ -143,7 +143,7 @@ def login():
             return redirect(nxt)
 
         # default: login
-        if not user or not check_password_hash(str(user.password_hash or ""), str(pin)):
+        if not user or not check_password_hash(str(user.pin_hash or ""), str(pin)):
             err = "Credenziali non valide"
             return render_template("login.html", error=err), 401
 
@@ -158,6 +158,41 @@ def login():
 def logout():
     session.pop("user_id", None)
     return redirect(url_for("login"))
+
+@app.route('/login/google')
+def login_google():
+    redirect_uri = url_for('authorize_google', _external=True)
+    return oauth.google.authorize_redirect(redirect_uri)
+
+@app.route('/login/google/authorize')
+def authorize_google():
+    try:
+        token = oauth.google.authorize_access_token()
+        user_info = token.get('userinfo')
+        if not user_info:
+            return render_template("login.html", error="Google non ha restituito le informazioni utente")
+            
+        email = user_info.get("email")
+        if not email:
+            return render_template("login.html", error="Nessuna email ricevuta da Google")
+            
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            # check if username exists
+            base_username = email.split('@')[0]
+            username = base_username
+            i = 1
+            while User.query.filter_by(username=username).first():
+                username = f"{base_username}{i}"
+                i += 1
+            user = User(username=username, email=email, auth_provider='google')
+            db.session.add(user)
+            db.session.commit()
+            
+        session["user_id"] = user.id
+        return redirect(url_for('index'))
+    except Exception as e:
+        return render_template("login.html", error=f"Errore Google Login: {str(e)}")
 
 @app.route("/api/user/state", methods=["GET", "POST"])
 def user_state_api():

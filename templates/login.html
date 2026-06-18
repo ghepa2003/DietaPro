@@ -276,6 +276,50 @@
     /* Form panels */
     .form-panel { display: none; }
     .form-panel.active { display: block; }
+    
+    /* Google Login */
+    .divider {
+      display: flex;
+      align-items: center;
+      text-align: center;
+      margin: 24px 0;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 1px;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      border-bottom: 1px solid var(--border);
+    }
+    .divider span { padding: 0 10px; }
+    
+    .btn-google {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      width: 100%;
+      padding: 13px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 600;
+      font-family: 'Inter', sans-serif;
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+    .btn-google img {
+      width: 20px;
+      height: 20px;
+    }
+    .btn-google:hover {
+      background: rgba(255,255,255,0.1);
+      border-color: rgba(255,255,255,0.2);
+    }
   </style>
 </head>
 <body>
@@ -354,6 +398,14 @@
         <p class="hint">Il nome utente deve essere univoco.<br>Il PIN deve essere di 4 cifre numeriche.</p>
       </form>
     </div>
+
+    <div class="divider">
+      <span>OPPURE</span>
+    </div>
+    <a href="{{ url_for('login_google') }}" class="btn-google">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google">
+      Accedi con Google
+    </a>
   </div>
 
   <script>
