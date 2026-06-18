@@ -1202,6 +1202,11 @@
       <div class="avatar">{{ username[0]|upper }}</div>
       <strong>{{ username }}</strong>
     </div>
+    {% if is_admin %}
+    <a href="{{ url_for('admin_dashboard') }}" style="text-decoration:none; margin-right: 12px;">
+      <button class="btn-logout" type="button" style="background:var(--accent); color:#fff; border:none; padding:8px 16px;">Admin Panel</button>
+    </a>
+    {% endif %}
     <a href="{{ url_for('logout') }}" style="text-decoration:none;">
       <button class="btn-logout" type="button">Esci</button>
     </a>

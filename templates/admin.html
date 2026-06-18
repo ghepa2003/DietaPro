@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DietaPro — Pannello Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0f1a;
+      --surface: rgba(22, 28, 42, 0.85);
+      --border: rgba(255,255,255,0.08);
+      --accent: #22c55e;
+      --accent-dark: #16a34a;
+      --text: #e8f0fe;
+      --text-muted: #8b9ab8;
+      --danger: #ef4444;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .btn {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .btn:hover { background: rgba(255,255,255,0.15); }
+    .btn-danger { background: rgba(239, 68, 68, 0.2); color: #fca5a5; border-color: rgba(239, 68, 68, 0.4); }
+    .btn-danger:hover { background: rgba(239, 68, 68, 0.3); }
+    .btn-accent { background: var(--accent); color: #000; border: none; }
+    .btn-accent:hover { background: var(--accent-dark); }
+    
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+    .tab {
+      padding: 10px 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .tab.active {
+      background: var(--accent);
+      color: #000;
+      border-color: var(--accent);
+    }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--surface);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+    th {
+      background: rgba(255,255,255,0.02);
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    
+    .badge {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .badge-admin { background: rgba(34,197,94,0.2); color: var(--accent); }
+    .badge-user { background: rgba(255,255,255,0.1); color: var(--text-muted); }
+    
+    /* Edit Modal */
+    #editModal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.8);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-content {
+      background: #161c2a;
+      padding: 24px;
+      border-radius: 12px;
+      width: 400px;
+      border: 1px solid var(--border);
+    }
+    .modal-content h3 { margin-bottom: 16px; }
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+    .form-group input, .form-group select {
+      width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border);
+      background: rgba(255,255,255,0.05); color: var(--text);
+    }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-left">
+      <h1>Pannello Admin</h1>
+    </div>
+    <a href="{{ url_for('index') }}" class="btn">← Torna all'app</a>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('users')">Gestione Utenti</div>
+    <div class="tab" onclick="switchTab('foods')">Gestione Alimenti</div>
+  </div>
+
+  <!-- Users Panel -->
+  <div id="users" class="panel active">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Username</th>
+          <th>Email</th>
+          <th>Provider</th>
+          <th>Ruolo</th>
+          <th>Creato il</th>
+          <th>Azioni</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ u.id }}</td>
+          <td>{{ u.username }}</td>
+          <td>{{ u.email or 'N/A' }}</td>
+          <td>{{ u.auth_provider }}</td>
+          <td>
+            {% if u.is_admin %}
+            <span class="badge badge-admin">Admin</span>
+            {% else %}
+            <span class="badge badge-user">User</span>
+            {% endif %}
+          </td>
+          <td>{{ u.created_at.strftime('%d/%m/%Y') }}</td>
+          <td>
+            <button class="btn" onclick="toggleAdmin({{ u.id }})">Cambia Ruolo</button>
+            <button class="btn btn-danger" onclick="deleteUser({{ u.id }})">Elimina</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Foods Panel -->
+  <div id="foods" class="panel">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nome</th>
+          <th>Categoria</th>
+          <th>Kcal</th>
+          <th>Carbo</th>
+          <th>Pro</th>
+          <th>Grassi</th>
+          <th>Azioni</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in foods %}
+        <tr>
+          <td>{{ f.id }}</td>
+          <td>{{ f.nome }}</td>
+          <td style="text-transform: capitalize;">{{ f.categoria }}</td>
+          <td>{{ f.calorie }}</td>
+          <td>{{ f.carboidrati }}</td>
+          <td>{{ f.proteine }}</td>
+          <td>{{ f.grassi }}</td>
+          <td>
+            <button class="btn" onclick='openEditFoodModal({{ f.id }}, {{ f.nome|tojson }}, "{{ f.categoria }}", {{ f.calorie }}, {{ f.carboidrati }}, {{ f.proteine }}, {{ f.grassi }})'>Modifica</button>
+            <button class="btn btn-danger" onclick="deleteFood({{ f.id }})">Elimina</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Edit Food Modal -->
+  <div id="editModal">
+    <div class="modal-content">
+      <h3>Modifica Alimento</h3>
+      <input type="hidden" id="edit_id">
+      <div class="form-group">
+        <label>Nome</label>
+        <input type="text" id="edit_nome">
+      </div>
+      <div class="form-group">
+        <label>Categoria</label>
+        <select id="edit_categoria">
+          <option value="carboidrati">Carboidrati</option>
+          <option value="proteine">Proteine</option>
+          <option value="grassi">Grassi</option>
+          <option value="frutta">Frutta</option>
+          <option value="verdura">Verdura</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Calorie (kcal)</label>
+        <input type="number" step="0.1" id="edit_calorie">
+      </div>
+      <div class="form-group">
+        <label>Carboidrati (g)</label>
+        <input type="number" step="0.1" id="edit_carboidrati">
+      </div>
+      <div class="form-group">
+        <label>Proteine (g)</label>
+        <input type="number" step="0.1" id="edit_proteine">
+      </div>
+      <div class="form-group">
+        <label>Grassi (g)</label>
+        <input type="number" step="0.1" id="edit_grassi">
+      </div>
+      <div class="modal-actions">
+        <button class="btn" onclick="closeModal()">Annulla</button>
+        <button class="btn btn-accent" onclick="saveFood()">Salva</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      document.querySelector(`.tab[onclick="switchTab('${tabId}')"]`).classList.add('active');
+      document.getElementById(tabId).classList.add('active');
+    }
+
+    async function toggleAdmin(id) {
+      if(!confirm("Vuoi davvero cambiare il ruolo di questo utente?")) return;
+      const res = await fetch(`/admin/toggle_admin/${id}`, { method: 'POST' });
+      const data = await res.json();
+      if(data.success) location.reload();
+      else alert(data.error);
+    }
+
+    async function deleteUser(id) {
+      if(!confirm("Sei sicuro di voler ELIMINARE questo utente in modo permanente?")) return;
+      const res = await fetch(`/admin/delete_user/${id}`, { method: 'POST' });
+      const data = await res.json();
+      if(data.success) location.reload();
+      else alert(data.error);
+    }
+
+    async function deleteFood(id) {
+      if(!confirm("Sei sicuro di voler eliminare questo alimento?")) return;
+      const res = await fetch(`/admin/delete_food/${id}`, { method: 'POST' });
+      const data = await res.json();
+      if(data.success) location.reload();
+      else alert(data.error);
+    }
+
+    function openEditFoodModal(id, nome, categoria, calorie, carbo, pro, grassi) {
+      document.getElementById('edit_id').value = id;
+      document.getElementById('edit_nome').value = nome;
+      document.getElementById('edit_categoria').value = categoria.toLowerCase();
+      document.getElementById('edit_calorie').value = calorie;
+      document.getElementById('edit_carboidrati').value = carbo;
+      document.getElementById('edit_proteine').value = pro;
+      document.getElementById('edit_grassi').value = grassi;
+      document.getElementById('editModal').style.display = 'flex';
+    }
+
+    function closeModal() {
+      document.getElementById('editModal').style.display = 'none';
+    }
+
+    async function saveFood() {
+      const id = document.getElementById('edit_id').value;
+      const payload = {
+        nome: document.getElementById('edit_nome').value,
+        categoria: document.getElementById('edit_categoria').value,
+        calorie: document.getElementById('edit_calorie').value,
+        carboidrati: document.getElementById('edit_carboidrati').value,
+        proteine: document.getElementById('edit_proteine').value,
+        grassi: document.getElementById('edit_grassi').value,
+      };
+      
+      const res = await fetch(`/admin/edit_food/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if(data.success) location.reload();
+      else alert(data.error);
+    }
+  </script>
+</body>
+</html>

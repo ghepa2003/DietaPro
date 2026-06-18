@@ -37,6 +37,21 @@ db.init_app(app)
 # Assicura che le tabelle vengano create se non esistono (fondamentale per Vercel serverless / db temporaneo)
 with app.app_context():
     db.create_all()
+    
+    # Migrazione per aggiungere is_admin se il DB esisteva già
+    from sqlalchemy import text
+    try:
+        db.session.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
+        db.session.commit()
+    except Exception:
+        db.session.rollback() # la colonna esiste già
+        
+    # Assegna automaticamente i privilegi di admin a ghessi2003@gmail.com
+    from models import User
+    admin_user = User.query.filter_by(email="ghessi2003@gmail.com").first()
+    if admin_user and not admin_user.is_admin:
+        admin_user.is_admin = True
+        db.session.commit()
 
 # OAuth Configuration
 oauth = OAuth(app)
@@ -331,6 +346,7 @@ def index():
         weekly_state=weekly_state,
         selected_day=selected_day,
         username=user.username,
+        is_admin=user.is_admin,
         meal_choices=meal_choices,
     )
 
@@ -732,6 +748,73 @@ def api_seed():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
+
+from functools import wraps
+
+def require_admin_decorator(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        user = get_current_user()
+        if not user or not user.is_admin:
+            if request.is_json:
+                return jsonify({"error": "Accesso negato"}), 403
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+@app.route("/admin")
+@require_admin_decorator
+def admin_dashboard():
+    users = User.query.all()
+    foods = Food.query.all()
+    return render_template("admin.html", users=users, foods=foods)
+
+@app.route("/admin/delete_user/<int:user_id>", methods=["POST"])
+@require_admin_decorator
+def admin_delete_user(user_id):
+    u = User.query.get(user_id)
+    if not u: return jsonify({"error": "Utente non trovato"}), 404
+    db.session.delete(u)
+    db.session.commit()
+    return jsonify({"success": True})
+
+@app.route("/admin/toggle_admin/<int:user_id>", methods=["POST"])
+@require_admin_decorator
+def admin_toggle_admin(user_id):
+    u = User.query.get(user_id)
+    if not u: return jsonify({"error": "Utente non trovato"}), 404
+    if u.id == session.get("user_id"):
+        return jsonify({"error": "Non puoi rimuovere i tuoi stessi privilegi"}), 400
+    u.is_admin = not u.is_admin
+    db.session.commit()
+    return jsonify({"success": True, "is_admin": u.is_admin})
+
+@app.route("/admin/delete_food/<int:food_id>", methods=["POST"])
+@require_admin_decorator
+def admin_delete_food(food_id):
+    f = Food.query.get(food_id)
+    if not f: return jsonify({"error": "Alimento non trovato"}), 404
+    db.session.delete(f)
+    db.session.commit()
+    return jsonify({"success": True})
+
+@app.route("/admin/edit_food/<int:food_id>", methods=["POST"])
+@require_admin_decorator
+def admin_edit_food(food_id):
+    f = Food.query.get(food_id)
+    if not f: return jsonify({"error": "Alimento non trovato"}), 404
+    payload = request.get_json()
+    if not payload: return jsonify({"error": "Dati mancanti"}), 400
+    
+    f.nome = payload.get("nome", f.nome)
+    f.categoria = payload.get("categoria", f.categoria).lower()
+    f.calorie = float(payload.get("calorie", f.calorie))
+    f.carboidrati = float(payload.get("carboidrati", f.carboidrati))
+    f.proteine = float(payload.get("proteine", f.proteine))
+    f.grassi = float(payload.get("grassi", f.grassi))
+    
+    db.session.commit()
+    return jsonify({"success": True})
 
 if __name__ == "__main__":
     debug = (os.environ.get("FLASK_DEBUG", "0") == "1")

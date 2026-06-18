@@ -17,6 +17,7 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=True) # Used for Local Auth
     pin_hash = db.Column(db.String(256), nullable=True) # Nullable because Google users don't need a PIN
     auth_provider = db.Column(db.String(20), nullable=False, default='local') # 'local' or 'google'
+    is_admin = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relationships
