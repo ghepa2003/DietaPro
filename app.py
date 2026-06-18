@@ -648,6 +648,26 @@ def shopping_list():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/get_food", methods=["GET"])
+def get_food():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Non autorizzato"}), 401
+    nome = request.args.get("nome")
+    if not nome:
+        return jsonify({"error": "Nome mancante"}), 400
+    food = Food.query.filter_by(nome=nome).first()
+    if not food:
+        return jsonify({"error": "Alimento non trovato"}), 404
+    return jsonify({
+        "nome": food.nome,
+        "categoria": food.categoria,
+        "calorie": food.calorie,
+        "carboidrati": food.carboidrati,
+        "proteine": food.proteine,
+        "grassi": food.grassi
+    })
+
 @app.route("/add_food", methods=["POST"])
 def add_food():
     user = get_current_user()
