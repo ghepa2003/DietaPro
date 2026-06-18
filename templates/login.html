@@ -1,74 +1,382 @@
 <!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8"/>
-    <title>Accedi - DietaPro</title>
-    <style>
-      body{font-family:Arial;max-width:480px;margin:40px auto;padding:0 12px}
-      h1{margin-bottom:6px}
-      .tabs{display:flex;gap:8px;margin:12px 0}
-      .tabs button{padding:8px 12px;cursor:pointer;border:1px solid #ccc;background:#f7f7f7}
-      .tabs button.active{background:#e3f2fd;border-color:#90caf9}
-      form{border:1px solid #ddd;padding:12px;border-radius:6px}
-      label{display:block;margin:8px 0 4px}
-      input{width:100%;padding:8px;box-sizing:border-box}
-      .row{display:flex;gap:8px}
-      .actions{margin-top:12px;display:flex;gap:8px}
-      .error{color:#b00020;margin:8px 0}
-    </style>
-  </head>
-  <body>
-    <h1>DietaPro</h1>
-    <div class="tabs">
-      <button id="tabLogin" class="active" type="button">Accedi</button>
-      <button id="tabRegister" type="button">Crea nuovo utente</button>
+<html lang="it">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DietaPro — Accedi</title>
+  <meta name="description" content="Accedi a DietaPro, il tuo pianificatore di dieta intelligente con calcolo automatico dei macronutrienti."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0f1a;
+      --surface: rgba(22, 28, 42, 0.85);
+      --border: rgba(255,255,255,0.08);
+      --accent: #22c55e;
+      --accent-dark: #16a34a;
+      --accent-glow: rgba(34, 197, 94, 0.25);
+      --text: #e8f0fe;
+      --text-muted: #8b9ab8;
+      --danger: #f87171;
+      --danger-bg: rgba(248, 113, 113, 0.1);
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Animated background blobs */
+    .bg-blob {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.15;
+      pointer-events: none;
+      animation: blobFloat 8s ease-in-out infinite alternate;
+    }
+    .bg-blob-1 {
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, #22c55e, transparent);
+      top: -150px; left: -150px;
+      animation-delay: 0s;
+    }
+    .bg-blob-2 {
+      width: 400px; height: 400px;
+      background: radial-gradient(circle, #3b82f6, transparent);
+      bottom: -100px; right: -100px;
+      animation-delay: 3s;
+    }
+    .bg-blob-3 {
+      width: 300px; height: 300px;
+      background: radial-gradient(circle, #a855f7, transparent);
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      animation-delay: 6s;
+    }
+    @keyframes blobFloat {
+      from { transform: scale(1) translate(0, 0); }
+      to   { transform: scale(1.1) translate(20px, -20px); }
+    }
+
+    /* Grid pattern overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+    }
+
+    /* Card */
+    .card {
+      background: var(--surface);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 48px 44px;
+      width: 100%;
+      max-width: 440px;
+      position: relative;
+      z-index: 10;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.05),
+        0 32px 64px rgba(0,0,0,0.5),
+        0 0 80px rgba(34,197,94,0.05);
+      animation: cardIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(32px) scale(0.97); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* Logo */
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+    .logo-icon {
+      width: 48px; height: 48px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px;
+      box-shadow: 0 0 24px var(--accent-glow);
+      flex-shrink: 0;
+    }
+    .logo-text h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.5px;
+    }
+    .logo-text p {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      background: rgba(255,255,255,0.04);
+      border-radius: 12px;
+      padding: 4px;
+      margin-bottom: 28px;
+      gap: 0;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 10px 16px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 14px;
+      font-weight: 500;
+      font-family: 'Inter', sans-serif;
+      border-radius: 9px;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      position: relative;
+    }
+    .tab-btn.active {
+      background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+      color: #fff;
+      box-shadow: 0 4px 16px var(--accent-glow);
+    }
+    .tab-btn:not(.active):hover {
+      color: var(--text);
+      background: rgba(255,255,255,0.06);
+    }
+
+    /* Error alert */
+    .alert-error {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--danger-bg);
+      border: 1px solid rgba(248,113,113,0.25);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 20px;
+      color: var(--danger);
+      font-size: 14px;
+      animation: shake 0.3s ease;
+    }
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      25%      { transform: translateX(-6px); }
+      75%      { transform: translateX(6px); }
+    }
+
+    /* Form */
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .input-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .input-icon {
+      position: absolute;
+      left: 14px;
+      font-size: 16px;
+      color: var(--text-muted);
+      pointer-events: none;
+      transition: color 0.2s;
+    }
+    .form-input {
+      width: 100%;
+      padding: 13px 14px 13px 44px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--text);
+      font-size: 15px;
+      font-family: 'Inter', sans-serif;
+      transition: all 0.2s ease;
+      outline: none;
+    }
+    .form-input::placeholder { color: rgba(139,154,184,0.5); }
+    .form-input:focus {
+      border-color: var(--accent);
+      background: rgba(34,197,94,0.04);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    .form-input:focus + .input-icon,
+    .input-wrap:focus-within .input-icon { color: var(--accent); }
+
+    /* Submit button */
+    .btn-primary {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+      border: none;
+      border-radius: 12px;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: all 0.25s ease;
+      box-shadow: 0 4px 20px var(--accent-glow);
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-primary::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.15), transparent);
+      opacity: 0;
+      transition: opacity 0.25s;
+    }
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 32px var(--accent-glow);
+    }
+    .btn-primary:hover::before { opacity: 1; }
+    .btn-primary:active { transform: translateY(0); }
+
+    /* Hint */
+    .hint {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 16px;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    /* Form panels */
+    .form-panel { display: none; }
+    .form-panel.active { display: block; }
+  </style>
+</head>
+<body>
+  <div class="bg-blob bg-blob-1"></div>
+  <div class="bg-blob bg-blob-2"></div>
+  <div class="bg-blob bg-blob-3"></div>
+
+  <div class="card">
+    <div class="logo">
+      <div class="logo-icon">🥗</div>
+      <div class="logo-text">
+        <h1>DietaPro</h1>
+        <p>Pianifica la tua alimentazione</p>
+      </div>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button id="tabLogin" class="tab-btn active" type="button" role="tab" aria-selected="true" aria-controls="panelLogin">Accedi</button>
+      <button id="tabRegister" class="tab-btn" type="button" role="tab" aria-selected="false" aria-controls="panelRegister">Crea account</button>
     </div>
 
     {% if error %}
-      <div class="error">{{ error }}</div>
+    <div class="alert-error" role="alert">
+      <span>⚠️</span>
+      <span>{{ error }}</span>
+    </div>
     {% endif %}
 
-    <form id="formLogin" method="post" action="{{ url_for('login') }}">
-      <input type="hidden" name="action" value="login">
-      <label>Nome utente</label>
-      <input name="username" required autocomplete="username">
-      <label>PIN (4 cifre)</label>
-      <input name="pin" required pattern="\d{4}" inputmode="numeric" autocomplete="current-password" placeholder="0000">
-      <div class="actions">
-        <button type="submit">Accedi</button>
-      </div>
-    </form>
+    <!-- Login panel -->
+    <div id="panelLogin" class="form-panel active" role="tabpanel" aria-labelledby="tabLogin">
+      <form method="post" action="{{ url_for('login') }}">
+        <input type="hidden" name="action" value="login">
+        <div class="form-group">
+          <label class="form-label" for="login_username">Nome utente</label>
+          <div class="input-wrap">
+            <input id="login_username" class="form-input" name="username" required
+              autocomplete="username" placeholder="Il tuo nome utente">
+            <span class="input-icon">👤</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="login_pin">PIN (4 cifre)</label>
+          <div class="input-wrap">
+            <input id="login_pin" class="form-input" name="pin" required
+              pattern="\d{4}" inputmode="numeric" maxlength="4"
+              autocomplete="current-password" placeholder="••••">
+            <span class="input-icon">🔐</span>
+          </div>
+        </div>
+        <button type="submit" class="btn-primary">Accedi →</button>
+      </form>
+    </div>
 
-    <form id="formRegister" method="post" action="{{ url_for('login') }}" style="display:none">
-      <input type="hidden" name="action" value="register">
-      <label>Nome utente</label>
-      <input name="username" required autocomplete="username" placeholder="es. mario.rossi">
-      <label>PIN (4 cifre)</label>
-      <input name="pin" required pattern="\d{4}" inputmode="numeric" autocomplete="new-password" placeholder="0000">
-      <div class="actions">
-        <button type="submit">Crea utente</button>
-      </div>
-      <p style="font-size:12px;color:#555;margin-top:8px">Il nome utente deve essere univoco. Il PIN deve essere composto da 4 cifre numeriche.</p>
-    </form>
+    <!-- Register panel -->
+    <div id="panelRegister" class="form-panel" role="tabpanel" aria-labelledby="tabRegister">
+      <form method="post" action="{{ url_for('login') }}">
+        <input type="hidden" name="action" value="register">
+        <div class="form-group">
+          <label class="form-label" for="reg_username">Nome utente</label>
+          <div class="input-wrap">
+            <input id="reg_username" class="form-input" name="username" required
+              autocomplete="username" placeholder="es. mario.rossi">
+            <span class="input-icon">👤</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="reg_pin">PIN (4 cifre)</label>
+          <div class="input-wrap">
+            <input id="reg_pin" class="form-input" name="pin" required
+              pattern="\d{4}" inputmode="numeric" maxlength="4"
+              autocomplete="new-password" placeholder="••••">
+            <span class="input-icon">🔐</span>
+          </div>
+        </div>
+        <button type="submit" class="btn-primary">Crea account →</button>
+        <p class="hint">Il nome utente deve essere univoco.<br>Il PIN deve essere di 4 cifre numeriche.</p>
+      </form>
+    </div>
+  </div>
 
-    <script>
-      (function(){
-        const tabLogin = document.getElementById('tabLogin');
-        const tabRegister = document.getElementById('tabRegister');
-        const formLogin = document.getElementById('formLogin');
-        const formRegister = document.getElementById('formRegister');
-        function show(which){
-          if(which === 'login'){
-            tabLogin.classList.add('active'); tabRegister.classList.remove('active');
-            formLogin.style.display='block'; formRegister.style.display='none';
-          }else{
-            tabRegister.classList.add('active'); tabLogin.classList.remove('active');
-            formRegister.style.display='block'; formLogin.style.display='none';
-          }
+  <script>
+    (function(){
+      const tabLogin    = document.getElementById('tabLogin');
+      const tabRegister = document.getElementById('tabRegister');
+      const panelLogin  = document.getElementById('panelLogin');
+      const panelReg    = document.getElementById('panelRegister');
+
+      function show(which){
+        if(which === 'login'){
+          tabLogin.classList.add('active');    tabLogin.setAttribute('aria-selected','true');
+          tabRegister.classList.remove('active'); tabRegister.setAttribute('aria-selected','false');
+          panelLogin.classList.add('active');  panelReg.classList.remove('active');
+        } else {
+          tabRegister.classList.add('active'); tabRegister.setAttribute('aria-selected','true');
+          tabLogin.classList.remove('active'); tabLogin.setAttribute('aria-selected','false');
+          panelReg.classList.add('active');    panelLogin.classList.remove('active');
         }
-        tabLogin.addEventListener('click', ()=>show('login'));
-        tabRegister.addEventListener('click', ()=>show('register'));
-      })();
-    </script>
-  </body>
+      }
+      tabLogin.addEventListener('click', () => show('login'));
+      tabRegister.addEventListener('click', () => show('register'));
+    })();
+  </script>
+</body>
 </html>
