@@ -205,7 +205,7 @@ def user_state_api():
         return jsonify({"error": "not authenticated"}), 401
     if request.method == "GET":
         state_obj = UserState.query.filter_by(user_id=user.id).first()
-        data = state_obj.data if state_obj else {}
+        data = state_obj.state_json if state_obj else {}
         return jsonify({"username": user.username, "state": data})
     # POST save
     payload = request.get_json() or {}
@@ -221,10 +221,10 @@ def user_state_api():
     cleaned = {k: payload.get(k) for k in allowed_keys if k in payload}
     state_obj = UserState.query.filter_by(user_id=user.id).first()
     if not state_obj:
-        state_obj = UserState(user_id=user.id, data=cleaned)
+        state_obj = UserState(user_id=user.id, state_json=cleaned)
         db.session.add(state_obj)
     else:
-        state_obj.data = cleaned
+        state_obj.state_json = cleaned
     db.session.commit()
     return jsonify({"ok": True})
 
@@ -276,7 +276,7 @@ def index():
     selected_day = WEEK_DAYS[0]
     
     state_obj = UserState.query.filter_by(user_id=user.id).first()
-    state = state_obj.data if state_obj else {}
+    state = state_obj.state_json if state_obj else {}
     
     if isinstance(state.get("calorie_tot"), (int, float)):
         defaults["calorie_tot"] = state["calorie_tot"]
@@ -648,6 +648,37 @@ def shopping_list():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/add_food", methods=["POST"])
+def add_food():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Non autorizzato"}), 401
+        
+    payload = request.get_json()
+    if not payload:
+        return jsonify({"error": "Dati mancanti"}), 400
+        
+    nome = payload.get("nome")
+    categoria = payload.get("categoria")
+    
+    if not nome or not categoria:
+        return jsonify({"error": "Nome e categoria obbligatori"}), 400
+        
+    try:
+        f = Food(
+            nome=nome,
+            categoria=categoria.lower(),
+            calorie=float(payload.get("calorie", 0)),
+            carboidrati=float(payload.get("carboidrati", 0)),
+            proteine=float(payload.get("proteine", 0)),
+            grassi=float(payload.get("grassi", 0))
+        )
+        db.session.add(f)
+        db.session.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
 @app.route("/api/seed", methods=["GET"])
 def api_seed():
     import pandas as pd
