@@ -243,7 +243,7 @@ def user_state_api():
     db.session.commit()
     return jsonify({"ok": True})
 
-MEALS = ["colazione", "pranzo", "spuntino", "cena"]
+MEALS = ["colazione", "pranzo", "cena"]
 WEEK_DAYS = ["lunedi", "martedi", "mercoledi", "giovedi", "venerdi", "sabato", "domenica"]
 
 def build_foods_by_category():
@@ -494,16 +494,7 @@ def compute_day():
                 )
             except Exception as e:
                 print(f"[{m}] calcola_dieta error: {e}")
-                results_by_meal[m] = {
-                    "per_food": [],
-                    "totals": {"kcal": 0.0, "carbo": 0.0, "proteine": 0.0, "grassi": 0.0},
-                    "macro_kcal": {"carbo": 0.0, "proteine": 0.0, "grassi": 0.0},
-                    "macro_percent": {"carbo": 0.0, "proteine": 0.0, "grassi": 0.0},
-                    "quant_frutta": None,
-                    "quant_verdura": None,
-                    "requested_kcal": cal_pasto,
-                }
-                continue
+                return jsonify({"error": f"Errore nel pasto '{m.capitalize()}': compilalo selezionando gli alimenti prima di calcolare la giornata!"}), 400
 
             per_food, totals = calcola_calorie(scelti, sol, carbo_db, prot_db, grassi_db, frutta_db, verdura_db)
             per_food_serial = [
