@@ -724,7 +724,7 @@ def add_food():
         )
         db.session.add(f)
         db.session.commit()
-        return jsonify({"success": True})
+        return jsonify({"success": True, "item": {"nome": nome, "categoria": categoria.lower()}})
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
