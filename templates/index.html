@@ -2681,12 +2681,7 @@
               const categories = ['carboidrati', 'proteine', 'grassi', 'frutta', 'verdura'];
               categories.forEach(cat => {
                 if (WEEKLY[day].choices[meal][cat]) {
-                  const containerId = `chips_${meal}_${cat}`;
-                  const container = document.getElementById(containerId);
-                  if (container) {
-                    container.innerHTML = '';
-                    setChips(meal, cat, WEEKLY[day].choices[meal][cat]);
-                  }
+                  setChips(meal, cat, WEEKLY[day].choices[meal][cat]);
                 }
               });
             }
