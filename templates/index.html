@@ -2663,16 +2663,16 @@
       if (giorniData) {
         for (const [rawDay, meals] of Object.entries(giorniData)) {
           const day = rawDay.toLowerCase().replace('ì','i').replace('è','e').replace('é','e');
-          if (!WEEKLY[day]) continue;
+          if (!WEEKLY[day] || !WEEKLY[day].choices) continue;
           
           for (const [rawMeal, cats] of Object.entries(meals)) {
             const meal = rawMeal.toLowerCase();
-            if (!WEEKLY[day][meal]) continue;
+            if (!WEEKLY[day].choices[meal]) continue;
             
             for (const [rawCat, items] of Object.entries(cats)) {
               const cat = rawCat.toLowerCase();
-              if (WEEKLY[day][meal][cat] !== undefined) {
-                WEEKLY[day][meal][cat] = Array.isArray(items) ? items : [items];
+              if (WEEKLY[day].choices[meal][cat] !== undefined) {
+                WEEKLY[day].choices[meal][cat] = Array.isArray(items) ? items : [items];
                 updatedCount++;
               }
             }
@@ -2680,12 +2680,12 @@
             if (day === currentDay) {
               const categories = ['carboidrati', 'proteine', 'grassi', 'frutta', 'verdura'];
               categories.forEach(cat => {
-                if (WEEKLY[day][meal][cat]) {
+                if (WEEKLY[day].choices[meal][cat]) {
                   const containerId = `chips_${meal}_${cat}`;
                   const container = document.getElementById(containerId);
                   if (container) {
                     container.innerHTML = '';
-                    setChips(meal, cat, WEEKLY[day][meal][cat]);
+                    setChips(meal, cat, WEEKLY[day].choices[meal][cat]);
                   }
                 }
               });
