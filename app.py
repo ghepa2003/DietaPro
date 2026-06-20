@@ -73,6 +73,19 @@ def get_current_user():
         return db.session.get(User, user_id)
     return None
 
+from functools import wraps
+
+def require_admin_decorator(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        user = get_current_user()
+        if not user or not user.is_admin:
+            if request.is_json:
+                return jsonify({"error": "Accesso negato"}), 403
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
 def _is_valid_pin(pin: str) -> bool:
     return isinstance(pin, str) and len(pin) == 4 and pin.isdigit()
 
@@ -771,18 +784,7 @@ def api_seed():
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
-from functools import wraps
 
-def require_admin_decorator(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        user = get_current_user()
-        if not user or not user.is_admin:
-            if request.is_json:
-                return jsonify({"error": "Accesso negato"}), 403
-            return redirect(url_for('index'))
-        return f(*args, **kwargs)
-    return decorated_function
 @app.route("/database_alimenti")
 def database_alimenti():
     user = get_current_user()
