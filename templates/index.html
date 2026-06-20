@@ -1240,56 +1240,7 @@
       </div>
     </a>
 
-    {% if is_admin %}
-    <!-- Aggiungi alimento -->
-    <div class="sidebar-section">
-      <div class="sidebar-section-header" role="button" tabindex="0">
-        <span class="sidebar-section-title"><span class="icon">➕</span>Aggiungi alimento</span>
-        <span class="sidebar-section-chevron">▼</span>
-      </div>
-      <div class="sidebar-section-body">
-        <div class="field-group">
-          <label class="field-label" for="new_nome">Nome</label>
-          <div style="position:relative;">
-            <input class="field-input" id="new_nome" placeholder="es. quinoa" autocomplete="off">
-            <div class="autocomplete-list" id="addFoodDropdown"></div>
-          </div>
-        </div>
-        <div class="field-group">
-          <label class="field-label" for="new_categoria">Categoria</label>
-          <select class="addfood-select" id="new_categoria">
-            <option value="carboidrati">Carboidrati</option>
-            <option value="proteine">Proteine</option>
-            <option value="grassi">Grassi</option>
-            <option value="frutta">Frutta</option>
-            <option value="verdura">Verdura</option>
-          </select>
-        </div>
-        <div class="field-row">
-          <div class="field-group">
-            <label class="field-label" for="new_calorie">Kcal</label>
-            <input class="field-input" id="new_calorie" type="number" step="0.1" placeholder="0">
-          </div>
-          <div class="field-group">
-            <label class="field-label" for="new_carbo">Carbo g</label>
-            <input class="field-input" id="new_carbo" type="number" step="0.1" placeholder="0">
-          </div>
-        </div>
-        <div class="field-row">
-          <div class="field-group">
-            <label class="field-label" for="new_prot">Prot g</label>
-            <input class="field-input" id="new_prot" type="number" step="0.1" placeholder="0">
-          </div>
-          <div class="field-group">
-            <label class="field-label" for="new_fat">Grassi g</label>
-            <input class="field-input" id="new_fat" type="number" step="0.1" placeholder="0">
-          </div>
-        </div>
-        <button class="btn-addfood" id="btn_add_food" type="button">Aggiungi / Aggiorna</button>
-        <div class="save-status" id="add_food_status"></div>
-      </div>
-    </div>
-    {% endif %}
+
 
 
     <!-- Save button -->
@@ -1793,85 +1744,7 @@
     });
   });
 
-  /* ---- Add food autocomplete (sidebar) ---- */
-  (function(){
-    const input = document.getElementById('new_nome');
-    const selectCat = document.getElementById('new_categoria');
-    const dropdown = document.getElementById('addFoodDropdown');
-    if(!input || !dropdown) return;
 
-    async function fillFields(nome, categoria){
-      try{
-        const url = `${getFoodUrl}?categoria=${encodeURIComponent(categoria)}&nome=${encodeURIComponent(nome)}`;
-        const r = await fetch(url);
-        const data = await r.json();
-        if(!r.ok || data.error) return;
-        document.getElementById('new_calorie').value = data.calorie;
-        document.getElementById('new_carbo').value   = data.carboidrati;
-        document.getElementById('new_prot').value    = data.proteine;
-        document.getElementById('new_fat').value     = data.grassi;
-      }catch(e){}
-    }
-
-    input.addEventListener('input', () => {
-      const q = (input.value||'').trim().toLowerCase();
-      if(!q){ dropdown.classList.remove('open'); dropdown.innerHTML=''; return; }
-      const cat = selectCat.value;
-      const pool = foodsByCat[cat] || [];
-      const matches = pool.filter(f => f.toLowerCase().includes(q)).slice(0,40);
-      if(!matches.length){ dropdown.classList.remove('open'); dropdown.innerHTML=''; return; }
-      dropdown.innerHTML = '';
-      matches.forEach(name => {
-        const div = document.createElement('div');
-        div.className = 'autocomplete-item';
-        div.textContent = name;
-        div.addEventListener('mousedown', async (e) => {
-          e.preventDefault();
-          input.value = name;
-          dropdown.classList.remove('open');
-          await fillFields(name, selectCat.value);
-        });
-        dropdown.appendChild(div);
-      });
-      dropdown.classList.add('open');
-    });
-    input.addEventListener('blur', () => { setTimeout(()=>dropdown.classList.remove('open'), 160); });
-    selectCat.addEventListener('change', () => { dropdown.classList.remove('open'); });
-  })();
-
-  /* ---- Add food handler ---- */
-  const btnAddFood = document.getElementById('btn_add_food');
-  if (btnAddFood) {
-    btnAddFood.addEventListener('click', async () => {
-      const status = document.getElementById('add_food_status');
-      status.textContent = '';
-      const payload = {
-        nome: (document.getElementById('new_nome').value||'').trim(),
-        categoria: document.getElementById('new_categoria').value,
-        calorie: parseFloat(document.getElementById('new_calorie').value||'0'),
-        carboidrati: parseFloat(document.getElementById('new_carbo').value||'0'),
-        proteine: parseFloat(document.getElementById('new_prot').value||'0'),
-        grassi: parseFloat(document.getElementById('new_fat').value||'0')
-      };
-      try{
-        const r = await fetch(addFoodUrl, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
-        const data = await r.json();
-        if(!r.ok || data.error) throw new Error(data.error||'Errore');
-        const cat = data.item.categoria;
-        const nome = data.item.nome;
-        foodsByCat[cat] = foodsByCat[cat] || [];
-        if(!foodsByCat[cat].includes(nome)) foodsByCat[cat].push(nome);
-        foodsByCat[cat].sort((a,b) => a.localeCompare(b));
-        status.textContent = '✓ Salvato';
-        status.className = 'save-status';
-        showToast(`"${nome}" aggiunto in ${cat}!`);
-      }catch(e){
-        status.textContent = '✕ Errore';
-        status.className = 'save-status error';
-        showToast('Errore: ' + (e.message||''), 'error');
-      }
-    });
-  }
 
   /* ---- Sidebar sections toggle ---- */
   document.querySelectorAll('.sidebar-section-header').forEach(header => {

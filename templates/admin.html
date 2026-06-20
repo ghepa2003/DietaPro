@@ -103,6 +103,55 @@
     }
     .badge-admin { background: rgba(34,197,94,0.2); color: var(--accent); }
     .badge-user { background: rgba(255,255,255,0.1); color: var(--text-muted); }
+
+    /* Nuovi stili per toolbar e badge alimenti */
+    .toolbar {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 24px;
+      background: var(--surface);
+      padding: 16px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .filter-group label {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .filter-group select, .filter-group input {
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+    }
+    .filter-group select option {
+      background: #161c2a;
+      color: var(--text);
+    }
+    .filter-group select:focus, .filter-group input:focus {
+      border-color: var(--accent);
+    }
+    
+    .badge.carboidrati { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+    .badge.proteine { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+    .badge.grassi { background: rgba(234, 179, 8, 0.2); color: #facc15; }
+    .badge.frutta { background: rgba(168, 85, 247, 0.2); color: #c084fc; }
+    .badge.verdura { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+
+    .table-container {
+      max-height: calc(100vh - 250px);
+      overflow-y: auto;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
     
     /* Edit Modal */
     #editModal {
@@ -186,37 +235,57 @@
 
   <!-- Foods Panel -->
   <div id="foods" class="panel">
-    <table>
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>Nome</th>
-          <th>Categoria</th>
-          <th>Kcal</th>
-          <th>Carbo</th>
-          <th>Pro</th>
-          <th>Grassi</th>
-          <th>Azioni</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for f in foods %}
-        <tr>
-          <td>{{ f.id }}</td>
-          <td>{{ f.nome }}</td>
-          <td style="text-transform: capitalize;">{{ f.categoria }}</td>
-          <td>{{ f.calorie }}</td>
-          <td>{{ f.carboidrati }}</td>
-          <td>{{ f.proteine }}</td>
-          <td>{{ f.grassi }}</td>
-          <td>
-            <button class="btn" onclick='openEditFoodModal({{ f.id }}, {{ f.nome|tojson }}, "{{ f.categoria }}", {{ f.calorie }}, {{ f.carboidrati }}, {{ f.proteine }}, {{ f.grassi }})'>Modifica</button>
-            <button class="btn btn-danger" onclick="deleteFood({{ f.id }})">Elimina</button>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="toolbar" style="align-items: flex-end;">
+      <div class="filter-group">
+        <label for="search">Cerca nome</label>
+        <input type="text" id="search" placeholder="Cerca...">
+      </div>
+      <div class="filter-group">
+        <label for="filter_category">Categoria</label>
+        <select id="filter_category">
+          <option value="all">Tutte le categorie</option>
+          <option value="carboidrati">Carboidrati</option>
+          <option value="proteine">Proteine</option>
+          <option value="grassi">Grassi</option>
+          <option value="frutta">Frutta</option>
+          <option value="verdura">Verdura</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="sort_by">Ordina per</label>
+        <select id="sort_by">
+          <option value="name_asc">Nome (A-Z)</option>
+          <option value="name_desc">Nome (Z-A)</option>
+          <option value="kcal_desc">Calorie (Maggiore - Minore)</option>
+          <option value="kcal_asc">Calorie (Minore - Maggiore)</option>
+          <option value="carbo_desc">Carboidrati (Maggiore - Minore)</option>
+          <option value="prot_desc">Proteine (Maggiore - Minore)</option>
+          <option value="fat_desc">Grassi (Maggiore - Minore)</option>
+        </select>
+      </div>
+      <div style="flex-grow: 1; text-align: right;">
+        <button class="btn btn-accent" onclick='openEditFoodModal("new", "", "carboidrati", "", "", "", "")'>➕ Nuovo Alimento</button>
+      </div>
+    </div>
+
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Nome</th>
+            <th>Categoria</th>
+            <th>Kcal</th>
+            <th>Carbo</th>
+            <th>Pro</th>
+            <th>Grassi</th>
+            <th>Azioni</th>
+          </tr>
+        </thead>
+        <tbody id="foods_tbody">
+          <!-- Renderizzato via JS -->
+        </tbody>
+      </table>
+    </div>
   </div>
 
   <!-- Edit Food Modal -->
@@ -262,6 +331,80 @@
   </div>
 
   <script>
+    const allFoods = [
+      {% for f in foods %}
+      {
+        id: {{ f.id }},
+        nome: {{ f.nome|tojson }},
+        categoria: "{{ f.categoria }}",
+        calorie: {{ f.calorie }},
+        carboidrati: {{ f.carboidrati }},
+        proteine: {{ f.proteine }},
+        grassi: {{ f.grassi }}
+      }{% if not loop.last %},{% endif %}
+      {% endfor %}
+    ];
+
+    const tbody = document.getElementById('foods_tbody');
+    const searchInput = document.getElementById('search');
+    const categorySelect = document.getElementById('filter_category');
+    const sortSelect = document.getElementById('sort_by');
+
+    function renderTable() {
+      // 1. Filtro
+      const searchQ = searchInput.value.toLowerCase().trim();
+      const cat = categorySelect.value;
+      
+      let filtered = allFoods.filter(f => {
+        const matchSearch = f.nome.toLowerCase().includes(searchQ);
+        const matchCat = (cat === 'all' || f.categoria.toLowerCase() === cat);
+        return matchSearch && matchCat;
+      });
+
+      // 2. Ordinamento
+      const sortVal = sortSelect.value;
+      filtered.sort((a, b) => {
+        if (sortVal === 'name_asc') return a.nome.localeCompare(b.nome);
+        if (sortVal === 'name_desc') return b.nome.localeCompare(a.nome);
+        if (sortVal === 'kcal_desc') return b.calorie - a.calorie;
+        if (sortVal === 'kcal_asc') return a.calorie - b.calorie;
+        if (sortVal === 'carbo_desc') return b.carboidrati - a.carboidrati;
+        if (sortVal === 'prot_desc') return b.proteine - a.proteine;
+        if (sortVal === 'fat_desc') return b.grassi - a.grassi;
+        return 0;
+      });
+
+      // 3. Render
+      tbody.innerHTML = '';
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:24px; color:var(--text-muted);">Nessun alimento trovato</td></tr>';
+        return;
+      }
+
+      filtered.forEach(f => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td style="font-weight: 500;">${f.nome}</td>
+          <td><span class="badge ${f.categoria}">${f.categoria}</span></td>
+          <td>${f.calorie.toFixed(1)}</td>
+          <td>${f.carboidrati.toFixed(1)}</td>
+          <td>${f.proteine.toFixed(1)}</td>
+          <td>${f.grassi.toFixed(1)}</td>
+          <td>
+            <button class="btn" onclick='openEditFoodModal(${f.id}, ${JSON.stringify(f.nome)}, "${f.categoria}", ${f.calorie}, ${f.carboidrati}, ${f.proteine}, ${f.grassi})'>Modifica</button>
+            <button class="btn btn-danger" onclick="deleteFood(${f.id})">Elimina</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    searchInput.addEventListener('input', renderTable);
+    categorySelect.addEventListener('change', renderTable);
+    sortSelect.addEventListener('change', renderTable);
+
+    renderTable();
+
     function switchTab(tabId) {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
@@ -297,10 +440,10 @@
       document.getElementById('edit_id').value = id;
       document.getElementById('edit_nome').value = nome;
       document.getElementById('edit_categoria').value = categoria.toLowerCase();
-      document.getElementById('edit_calorie').value = calorie;
-      document.getElementById('edit_carboidrati').value = carbo;
-      document.getElementById('edit_proteine').value = pro;
-      document.getElementById('edit_grassi').value = grassi;
+      document.getElementById('edit_calorie').value = calorie || 0;
+      document.getElementById('edit_carboidrati').value = carbo || 0;
+      document.getElementById('edit_proteine').value = pro || 0;
+      document.getElementById('edit_grassi').value = grassi || 0;
       document.getElementById('editModal').style.display = 'flex';
     }
 
@@ -313,20 +456,31 @@
       const payload = {
         nome: document.getElementById('edit_nome').value,
         categoria: document.getElementById('edit_categoria').value,
-        calorie: document.getElementById('edit_calorie').value,
-        carboidrati: document.getElementById('edit_carboidrati').value,
-        proteine: document.getElementById('edit_proteine').value,
-        grassi: document.getElementById('edit_grassi').value,
+        calorie: parseFloat(document.getElementById('edit_calorie').value || 0),
+        carboidrati: parseFloat(document.getElementById('edit_carboidrati').value || 0),
+        proteine: parseFloat(document.getElementById('edit_proteine').value || 0),
+        grassi: parseFloat(document.getElementById('edit_grassi').value || 0),
       };
       
-      const res = await fetch(`/admin/edit_food/${id}`, {
+      let url = `/admin/edit_food/${id}`;
+      if (id === "new") {
+        url = `/add_food`;
+      }
+
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       const data = await res.json();
-      if(data.success) location.reload();
-      else alert(data.error);
+      
+      if (id === "new" && res.ok && !data.error) {
+        location.reload();
+      } else if (id !== "new" && data.success) {
+        location.reload();
+      } else {
+        alert(data.error || "Errore durante il salvataggio.");
+      }
     }
   </script>
 </body>
