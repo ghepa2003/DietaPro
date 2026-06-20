@@ -899,26 +899,24 @@ Nota: Includi nel JSON solo i giorni e i pasti che l'utente ti ha chiesto di mod
         if not api_key:
             return jsonify({"error": "GOOGLE_API_KEY mancante nel server"}), 500
 
-        # Effettuiamo una chiamata HTTP raw per aggirare il bug della libreria ufficiale
-        # con le nuove chiavi API di formato "AQ."
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-        
-        payload_data = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "systemInstruction": {"parts": [{"text": system_instruction}]}
-        }
+        # Utilizziamo il nuovo SDK ufficiale google-genai che supporta nativamente 
+        # le nuove chiavi "AQ." di Google AI Studio.
+        from google import genai
+        from google.genai import types
 
-        import requests
-        resp = requests.post(url, json=payload_data, headers={"Content-Type": "application/json"})
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model='gemini-1.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                temperature=0.7,
+            )
+        )
         
-        if resp.status_code != 200:
-            return jsonify({"error": f"Google API Error: {resp.text}"}), 500
-            
-        data = resp.json()
-        try:
-            text_response = data["candidates"][0]["content"]["parts"][0]["text"]
-        except (KeyError, IndexError):
-            return jsonify({"error": "Risposta inattesa da Google Gemini"}), 500
+        text_response = response.text
+        if not text_response:
+            return jsonify({"error": "Nessuna risposta dal modello"}), 500
 
         # Clean potential markdown block formatting from Gemini
         if text_response.startswith("```json"):
