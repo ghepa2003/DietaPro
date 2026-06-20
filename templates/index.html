@@ -2675,18 +2675,14 @@
                 WEEKLY[day].choices[meal][cat] = Array.isArray(items) ? items : [items];
                 updatedCount++;
               }
-            }
-            
-            if (day === currentDay) {
-              const categories = ['carboidrati', 'proteine', 'grassi', 'frutta', 'verdura'];
-              categories.forEach(cat => {
-                if (WEEKLY[day].choices[meal][cat]) {
-                  setChips(meal, cat, WEEKLY[day].choices[meal][cat]);
-                }
-              });
-            }
+            // Rimosso il setChips manuale, ricaricheremo tutto il DOM alla fine
           }
         }
+      }
+      
+      // Ricarica la vista del giorno corrente dal nuovo stato WEEKLY
+      if (updatedCount > 0) {
+        loadDayToDOM(currentDay);
       }
 
       showToast(updatedCount > 0 ? "Pasti generati dall'AI!" : "L'AI ha risposto, ma non ha modificato i pasti.");
