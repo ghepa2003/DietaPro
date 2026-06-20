@@ -714,15 +714,23 @@ def add_food():
         return jsonify({"error": "Nome e categoria obbligatori"}), 400
         
     try:
-        f = Food(
-            nome=nome,
-            categoria=categoria.lower(),
-            calorie=float(payload.get("calorie", 0)),
-            carboidrati=float(payload.get("carboidrati", 0)),
-            proteine=float(payload.get("proteine", 0)),
-            grassi=float(payload.get("grassi", 0))
-        )
-        db.session.add(f)
+        f = Food.query.filter_by(nome=nome).first()
+        if f:
+            f.categoria = categoria.lower()
+            f.calorie = float(payload.get("calorie", 0))
+            f.carboidrati = float(payload.get("carboidrati", 0))
+            f.proteine = float(payload.get("proteine", 0))
+            f.grassi = float(payload.get("grassi", 0))
+        else:
+            f = Food(
+                nome=nome,
+                categoria=categoria.lower(),
+                calorie=float(payload.get("calorie", 0)),
+                carboidrati=float(payload.get("carboidrati", 0)),
+                proteine=float(payload.get("proteine", 0)),
+                grassi=float(payload.get("grassi", 0))
+            )
+            db.session.add(f)
         db.session.commit()
         return jsonify({"success": True, "item": {"nome": nome, "categoria": categoria.lower()}})
     except Exception as e:
