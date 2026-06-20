@@ -265,15 +265,21 @@ WEEK_DAYS = ["lunedi", "martedi", "mercoledi", "giovedi", "venerdi", "sabato", "
 
 def build_foods_by_category():
     carbo_db, prot_db, grassi_db, frutta_db, verdura_db = load_dbs()
-    def safe_sorted_keys(d):
-        names = [str(k).strip() for k in d.keys() if str(k).strip()]
-        return sorted(names, key=lambda s: s.lower())
+    def format_foods(d):
+        formatted = []
+        for name, macros in d.items():
+            if not str(name).strip(): continue
+            c = macros.get('carboidrati', 0)
+            p = macros.get('proteine', 0)
+            g = macros.get('grassi', 0)
+            formatted.append(f"{str(name).strip()} (Carbo: {c}g, Prot: {p}g, Grassi: {g}g)")
+        return sorted(formatted, key=lambda s: s.lower())
     return {
-        "carboidrati": safe_sorted_keys(carbo_db),
-        "proteine": safe_sorted_keys(prot_db),
-        "grassi": safe_sorted_keys(grassi_db),
-        "frutta": safe_sorted_keys(frutta_db),
-        "verdura": safe_sorted_keys(verdura_db),
+        "carboidrati": format_foods(carbo_db),
+        "proteine": format_foods(prot_db),
+        "grassi": format_foods(grassi_db),
+        "frutta": format_foods(frutta_db),
+        "verdura": format_foods(verdura_db),
     }
 
 @app.route("/", methods=["GET", "POST"])
@@ -870,13 +876,18 @@ def generate_plan():
     system_instruction = f"""Sei un assistente nutrizionale esperto. Il tuo compito è creare menu scegliendo ESCLUSIVAMENTE dagli alimenti forniti dal database.
 L'utente ti chiederà di generare un pasto, una giornata o un'intera settimana, a volte dandoti vincoli precisi (es. 'niente pesce', 'voglio la pasta').
 
-REGOLE FONDAMENTALI SULLA SCELTA DEGLI ALIMENTI (Per garantire il calcolo matematico successivo):
-- Carboidrati: Scegli ESATTAMENTE 1 alimento per pasto.
-- Proteine: Scegli MINIMO 1, MASSIMO 2 alimenti per pasto.
-- Grassi: Scegli MINIMO 1, MASSIMO 2 alimenti per pasto.
-- Frutta/Verdura: Inseriscile in base alla logica del pasto (max 2 per tipo).
+REGOLE FONDAMENTALI PER IL BILANCIAMENTO MATEMATICO:
+Il tuo output verrà processato da un algoritmo matematico che bilancia le grammature esatte dei macronutrienti. Per evitare che l'algoritmo sballi:
+1. PREDILIGI ALIMENTI "PURI": Cerca di selezionare proteine con pochissimi carboidrati (es. pollo, carne, pesce, uova) e carboidrati con poche proteine.
+2. ATTENZIONE AGLI ALIMENTI IBRIDI (es. Legumi come ceci, fagioli, lenticchie): Se decidi di inserire nella categoria "proteine" un alimento che ha un alto tasso di carboidrati (controlla sempre i valori tra parentesi!), DEVI compensare per evitare di sforare i carboidrati totali del pasto. In quel pasto, lascia VUOTA l'array dei "carboidrati" (cioè "carboidrati": []), oppure scegli un carboidrato dal valore quasi nullo. Se metti "ceci" e "pasta" insieme, l'algoritmo andrà in crash matematico.
 
-DATABASE ALIMENTI DISPONIBILI:
+REGOLE DI COMPILAZIONE (Per i pasti scelti):
+- Carboidrati: Scegli 1 alimento (OPPURE 0 se hai scelto proteine ricche di carboidrati come i legumi).
+- Proteine: Scegli 1 o 2 alimenti.
+- Grassi: Scegli 1 o 2 alimenti (es. Olio d'oliva).
+- Frutta/Verdura: max 2 per tipo.
+
+DATABASE ALIMENTI DISPONIBILI CON MACRONUTRIENTI (per 100g):
 {foods_context}
 
 Devi restituire UNICAMENTE un output in formato JSON (senza markdown o altro testo) strutturato esattamente così:
