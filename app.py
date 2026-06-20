@@ -265,21 +265,15 @@ WEEK_DAYS = ["lunedi", "martedi", "mercoledi", "giovedi", "venerdi", "sabato", "
 
 def build_foods_by_category():
     carbo_db, prot_db, grassi_db, frutta_db, verdura_db = load_dbs()
-    def format_foods(d):
-        formatted = []
-        for name, macros in d.items():
-            if not str(name).strip(): continue
-            c = macros.get('carboidrati', 0)
-            p = macros.get('proteine', 0)
-            g = macros.get('grassi', 0)
-            formatted.append(f"{str(name).strip()} (Carbo: {c}g, Prot: {p}g, Grassi: {g}g)")
-        return sorted(formatted, key=lambda s: s.lower())
+    def safe_sorted_keys(d):
+        names = [str(k).strip() for k in d.keys() if str(k).strip()]
+        return sorted(names, key=lambda s: s.lower())
     return {
-        "carboidrati": format_foods(carbo_db),
-        "proteine": format_foods(prot_db),
-        "grassi": format_foods(grassi_db),
-        "frutta": format_foods(frutta_db),
-        "verdura": format_foods(verdura_db),
+        "carboidrati": safe_sorted_keys(carbo_db),
+        "proteine": safe_sorted_keys(prot_db),
+        "grassi": safe_sorted_keys(grassi_db),
+        "frutta": safe_sorted_keys(frutta_db),
+        "verdura": safe_sorted_keys(verdura_db),
     }
 
 @app.route("/", methods=["GET", "POST"])
@@ -868,10 +862,29 @@ def generate_plan():
         return jsonify({"error": "Prompt mancante"}), 400
 
     prompt = payload["prompt"]
-    foods_dict = build_foods_by_category()
     
-    # We want to format the foods nicely for the AI
-    foods_context = json.dumps(foods_dict, ensure_ascii=False)
+    # We load DBs directly to extract macro info exclusively for the AI,
+    # so we don't pollute the frontend autocomplete which uses build_foods_by_category()
+    carbo_db, prot_db, grassi_db, frutta_db, verdura_db = load_dbs()
+    def format_foods_for_ai(d):
+        formatted = []
+        for name, macros in d.items():
+            if not str(name).strip(): continue
+            c = macros.get('carboidrati', 0)
+            p = macros.get('proteine', 0)
+            g = macros.get('grassi', 0)
+            formatted.append(f"{str(name).strip()} (Carbo: {c}g, Prot: {p}g, Grassi: {g}g)")
+        return sorted(formatted, key=lambda s: s.lower())
+
+    ai_foods_dict = {
+        "carboidrati": format_foods_for_ai(carbo_db),
+        "proteine": format_foods_for_ai(prot_db),
+        "grassi": format_foods_for_ai(grassi_db),
+        "frutta": format_foods_for_ai(frutta_db),
+        "verdura": format_foods_for_ai(verdura_db),
+    }
+    
+    foods_context = json.dumps(ai_foods_dict, ensure_ascii=False)
 
     system_instruction = f"""Sei un assistente nutrizionale esperto. Il tuo compito è creare menu scegliendo ESCLUSIVAMENTE dagli alimenti forniti dal database.
 L'utente ti chiederà di generare un pasto, una giornata o un'intera settimana, a volte dandoti vincoli precisi (es. 'niente pesce', 'voglio la pasta').
