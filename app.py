@@ -698,6 +698,7 @@ def get_food():
     })
 
 @app.route("/add_food", methods=["POST"])
+@require_admin_decorator
 def add_food():
     user = get_current_user()
     if not user:
@@ -782,6 +783,13 @@ def require_admin_decorator(f):
             return redirect(url_for('index'))
         return f(*args, **kwargs)
     return decorated_function
+@app.route("/database_alimenti")
+def database_alimenti():
+    user = get_current_user()
+    if not user:
+        return redirect(url_for("login"))
+    foods = Food.query.order_by(Food.nome).all()
+    return render_template("database_alimenti.html", foods=foods, is_admin=user.is_admin)
 
 @app.route("/admin")
 @require_admin_decorator

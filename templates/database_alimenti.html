@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DietaPro — Database Alimenti</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0f1a;
+      --surface: rgba(22, 28, 42, 0.85);
+      --border: rgba(255,255,255,0.08);
+      --accent: #22c55e;
+      --accent-dark: #16a34a;
+      --text: #e8f0fe;
+      --text-muted: #8b9ab8;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .btn {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .btn:hover { background: rgba(255,255,255,0.15); }
+    
+    .toolbar {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 24px;
+      background: var(--surface);
+      padding: 16px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .filter-group label {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .filter-group select, .filter-group input {
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+    }
+    .filter-group select:focus, .filter-group input:focus {
+      border-color: var(--accent);
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--surface);
+      border-radius: 12px;
+      overflow: hidden;
+      border-spacing: 0;
+    }
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+    th {
+      background: rgba(255,255,255,0.02);
+      color: var(--text-muted);
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+    }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    tr:last-child td { border-bottom: none; }
+    
+    .badge {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: capitalize;
+    }
+    .badge.carboidrati { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+    .badge.proteine { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+    .badge.grassi { background: rgba(234, 179, 8, 0.2); color: #facc15; }
+    .badge.frutta { background: rgba(168, 85, 247, 0.2); color: #c084fc; }
+    .badge.verdura { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+
+    .table-container {
+      max-height: calc(100vh - 200px);
+      overflow-y: auto;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-left">
+      <h1>🥗 Database Alimenti</h1>
+    </div>
+    <a href="{{ url_for('index') }}" class="btn">← Torna all'app</a>
+  </header>
+
+  <div class="toolbar">
+    <div class="filter-group">
+      <label for="search">Cerca nome</label>
+      <input type="text" id="search" placeholder="Cerca...">
+    </div>
+    <div class="filter-group">
+      <label for="filter_category">Categoria</label>
+      <select id="filter_category">
+        <option value="all">Tutte le categorie</option>
+        <option value="carboidrati">Carboidrati</option>
+        <option value="proteine">Proteine</option>
+        <option value="grassi">Grassi</option>
+        <option value="frutta">Frutta</option>
+        <option value="verdura">Verdura</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label for="sort_by">Ordina per</label>
+      <select id="sort_by">
+        <option value="name_asc">Nome (A-Z)</option>
+        <option value="name_desc">Nome (Z-A)</option>
+        <option value="kcal_desc">Calorie (Maggiore - Minore)</option>
+        <option value="kcal_asc">Calorie (Minore - Maggiore)</option>
+        <option value="carbo_desc">Carboidrati (Maggiore - Minore)</option>
+        <option value="prot_desc">Proteine (Maggiore - Minore)</option>
+        <option value="fat_desc">Grassi (Maggiore - Minore)</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Categoria</th>
+          <th>Kcal (100g)</th>
+          <th>Carbo (g)</th>
+          <th>Proteine (g)</th>
+          <th>Grassi (g)</th>
+        </tr>
+      </thead>
+      <tbody id="foods_tbody">
+        <!-- Renderizzato via JS -->
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    // Dati dal backend
+    const allFoods = [
+      {% for f in foods %}
+      {
+        nome: {{ f.nome|tojson }},
+        categoria: "{{ f.categoria }}",
+        calorie: {{ f.calorie }},
+        carboidrati: {{ f.carboidrati }},
+        proteine: {{ f.proteine }},
+        grassi: {{ f.grassi }}
+      }{% if not loop.last %},{% endif %}
+      {% endfor %}
+    ];
+
+    const tbody = document.getElementById('foods_tbody');
+    const searchInput = document.getElementById('search');
+    const categorySelect = document.getElementById('filter_category');
+    const sortSelect = document.getElementById('sort_by');
+
+    function renderTable() {
+      // 1. Filtro
+      const searchQ = searchInput.value.toLowerCase().trim();
+      const cat = categorySelect.value;
+      
+      let filtered = allFoods.filter(f => {
+        const matchSearch = f.nome.toLowerCase().includes(searchQ);
+        const matchCat = (cat === 'all' || f.categoria.toLowerCase() === cat);
+        return matchSearch && matchCat;
+      });
+
+      // 2. Ordinamento
+      const sortVal = sortSelect.value;
+      filtered.sort((a, b) => {
+        if (sortVal === 'name_asc') return a.nome.localeCompare(b.nome);
+        if (sortVal === 'name_desc') return b.nome.localeCompare(a.nome);
+        if (sortVal === 'kcal_desc') return b.calorie - a.calorie;
+        if (sortVal === 'kcal_asc') return a.calorie - b.calorie;
+        if (sortVal === 'carbo_desc') return b.carboidrati - a.carboidrati;
+        if (sortVal === 'prot_desc') return b.proteine - a.proteine;
+        if (sortVal === 'fat_desc') return b.grassi - a.grassi;
+        return 0;
+      });
+
+      // 3. Render
+      tbody.innerHTML = '';
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--text-muted);">Nessun alimento trovato</td></tr>';
+        return;
+      }
+
+      filtered.forEach(f => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td style="font-weight: 500;">${f.nome}</td>
+          <td><span class="badge ${f.categoria}">${f.categoria}</span></td>
+          <td>${f.calorie.toFixed(1)}</td>
+          <td>${f.carboidrati.toFixed(1)}</td>
+          <td>${f.proteine.toFixed(1)}</td>
+          <td>${f.grassi.toFixed(1)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // Event listeners
+    searchInput.addEventListener('input', renderTable);
+    categorySelect.addEventListener('change', renderTable);
+    sortSelect.addEventListener('change', renderTable);
+
+    // Initial render
+    renderTable();
+  </script>
+</body>
+</html>
