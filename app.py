@@ -8,13 +8,10 @@ from werkzeug.security import generate_password_hash, check_password_hash
 # Integrations
 from models import db, User, Food, UserState
 from authlib.integrations.flask_client import OAuth
-import google.generativeai as genai
 from dotenv import load_dotenv
 import json
 
 load_dotenv()
-if os.environ.get("GOOGLE_API_KEY"):
-    genai.configure(api_key=os.environ.get("GOOGLE_API_KEY"))
 
 app = Flask(__name__, template_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates'))
 app.config["TEMPLATES_AUTO_RELOAD"] = True  # always re-read templates from disk
