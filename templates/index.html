@@ -2653,12 +2653,15 @@
       });
       
       const data = await r.json();
+      console.log("RISPOSTA AI RICEVUTA:", data);
       if (!r.ok || data.error) throw new Error(data.error || 'Errore nella generazione');
 
       let updatedCount = 0;
       
-      if (data.giorni) {
-        for (const [rawDay, meals] of Object.entries(data.giorni)) {
+      const giorniData = data.giorni || data;
+      
+      if (giorniData) {
+        for (const [rawDay, meals] of Object.entries(giorniData)) {
           const day = rawDay.toLowerCase().replace('ì','i').replace('è','e').replace('é','e');
           if (!WEEKLY[day]) continue;
           

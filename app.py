@@ -908,6 +908,7 @@ Nota: Includi nel JSON solo i giorni e i pasti che l'utente ti ha chiesto di mod
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 temperature=0.7,
+                response_mime_type="application/json"
             )
         )
         
