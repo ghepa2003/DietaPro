@@ -1840,35 +1840,38 @@
   })();
 
   /* ---- Add food handler ---- */
-  document.getElementById('btn_add_food').addEventListener('click', async () => {
-    const status = document.getElementById('add_food_status');
-    status.textContent = '';
-    const payload = {
-      nome: (document.getElementById('new_nome').value||'').trim(),
-      categoria: document.getElementById('new_categoria').value,
-      calorie: parseFloat(document.getElementById('new_calorie').value||'0'),
-      carboidrati: parseFloat(document.getElementById('new_carbo').value||'0'),
-      proteine: parseFloat(document.getElementById('new_prot').value||'0'),
-      grassi: parseFloat(document.getElementById('new_fat').value||'0')
-    };
-    try{
-      const r = await fetch(addFoodUrl, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
-      const data = await r.json();
-      if(!r.ok || data.error) throw new Error(data.error||'Errore');
-      const cat = data.item.categoria;
-      const nome = data.item.nome;
-      foodsByCat[cat] = foodsByCat[cat] || [];
-      if(!foodsByCat[cat].includes(nome)) foodsByCat[cat].push(nome);
-      foodsByCat[cat].sort((a,b) => a.localeCompare(b));
-      status.textContent = '✓ Salvato';
-      status.className = 'save-status';
-      showToast(`"${nome}" aggiunto in ${cat}!`);
-    }catch(e){
-      status.textContent = '✕ Errore';
-      status.className = 'save-status error';
-      showToast('Errore: ' + (e.message||''), 'error');
-    }
-  });
+  const btnAddFood = document.getElementById('btn_add_food');
+  if (btnAddFood) {
+    btnAddFood.addEventListener('click', async () => {
+      const status = document.getElementById('add_food_status');
+      status.textContent = '';
+      const payload = {
+        nome: (document.getElementById('new_nome').value||'').trim(),
+        categoria: document.getElementById('new_categoria').value,
+        calorie: parseFloat(document.getElementById('new_calorie').value||'0'),
+        carboidrati: parseFloat(document.getElementById('new_carbo').value||'0'),
+        proteine: parseFloat(document.getElementById('new_prot').value||'0'),
+        grassi: parseFloat(document.getElementById('new_fat').value||'0')
+      };
+      try{
+        const r = await fetch(addFoodUrl, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+        const data = await r.json();
+        if(!r.ok || data.error) throw new Error(data.error||'Errore');
+        const cat = data.item.categoria;
+        const nome = data.item.nome;
+        foodsByCat[cat] = foodsByCat[cat] || [];
+        if(!foodsByCat[cat].includes(nome)) foodsByCat[cat].push(nome);
+        foodsByCat[cat].sort((a,b) => a.localeCompare(b));
+        status.textContent = '✓ Salvato';
+        status.className = 'save-status';
+        showToast(`"${nome}" aggiunto in ${cat}!`);
+      }catch(e){
+        status.textContent = '✕ Errore';
+        status.className = 'save-status error';
+        showToast('Errore: ' + (e.message||''), 'error');
+      }
+    });
+  }
 
   /* ---- Sidebar sections toggle ---- */
   document.querySelectorAll('.sidebar-section-header').forEach(header => {
