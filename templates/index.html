@@ -2657,33 +2657,31 @@
 
       let updatedCount = 0;
       
-      // Il JSON previsto ha la struttura: data.giorni["lunedi"]["colazione"]["carboidrati"] = ["nome"]
       if (data.giorni) {
-        for (const [day, meals] of Object.entries(data.giorni)) {
+        for (const [rawDay, meals] of Object.entries(data.giorni)) {
+          const day = rawDay.toLowerCase().replace('ì','i').replace('è','e').replace('é','e');
           if (!WEEKLY[day]) continue;
           
-          for (const [meal, cats] of Object.entries(meals)) {
+          for (const [rawMeal, cats] of Object.entries(meals)) {
+            const meal = rawMeal.toLowerCase();
             if (!WEEKLY[day][meal]) continue;
             
-            // Per ogni categoria (carboidrati, proteine, ecc.) sovrascriviamo l'array
-            for (const [cat, items] of Object.entries(cats)) {
+            for (const [rawCat, items] of Object.entries(cats)) {
+              const cat = rawCat.toLowerCase();
               if (WEEKLY[day][meal][cat] !== undefined) {
                 WEEKLY[day][meal][cat] = Array.isArray(items) ? items : [items];
                 updatedCount++;
               }
             }
             
-            // Se il giorno generato è quello attualmente a schermo, aggiorniamo visivamente i chips
             if (day === currentDay) {
               const categories = ['carboidrati', 'proteine', 'grassi', 'frutta', 'verdura'];
               categories.forEach(cat => {
-                if (cats[cat]) {
+                if (WEEKLY[day][meal][cat]) {
                   const containerId = `chips_${meal}_${cat}`;
                   const container = document.getElementById(containerId);
                   if (container) {
-                    // Svuota chips esistenti
                     container.innerHTML = '';
-                    // Reinserisci con setChips
                     setChips(meal, cat, WEEKLY[day][meal][cat]);
                   }
                 }
