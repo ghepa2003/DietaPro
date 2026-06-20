@@ -34,3 +34,6 @@ user_data/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Environment variables
+.env
