@@ -8,6 +8,13 @@ from werkzeug.security import generate_password_hash, check_password_hash
 # Integrations
 from models import db, User, Food, UserState
 from authlib.integrations.flask_client import OAuth
+import google.generativeai as genai
+from dotenv import load_dotenv
+import json
+
+load_dotenv()
+if os.environ.get("GOOGLE_API_KEY"):
+    genai.configure(api_key=os.environ.get("GOOGLE_API_KEY"))
 
 app = Flask(__name__, template_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates'))
 app.config["TEMPLATES_AUTO_RELOAD"] = True  # always re-read templates from disk
@@ -846,6 +853,68 @@ def admin_edit_food(food_id):
     
     db.session.commit()
     return jsonify({"success": True})
+
+@app.route("/api/generate_plan", methods=["POST"])
+def generate_plan():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Autenticazione richiesta"}), 401
+
+    payload = request.get_json()
+    if not payload or "prompt" not in payload:
+        return jsonify({"error": "Prompt mancante"}), 400
+
+    prompt = payload["prompt"]
+    foods_dict = build_foods_by_category()
+    
+    # We want to format the foods nicely for the AI
+    foods_context = json.dumps(foods_dict, ensure_ascii=False)
+
+    system_instruction = f"""Sei un assistente nutrizionale esperto. Il tuo compito è creare menu scegliendo ESCLUSIVAMENTE dagli alimenti forniti dal database.
+L'utente ti chiederà di generare un pasto, una giornata o un'intera settimana, a volte dandoti vincoli precisi (es. 'niente pesce', 'voglio la pasta').
+
+REGOLE FONDAMENTALI SULLA SCELTA DEGLI ALIMENTI (Per garantire il calcolo matematico successivo):
+- Carboidrati: Scegli ESATTAMENTE 1 alimento per pasto.
+- Proteine: Scegli MINIMO 1, MASSIMO 2 alimenti per pasto.
+- Grassi: Scegli MINIMO 1, MASSIMO 2 alimenti per pasto.
+- Frutta/Verdura: Inseriscile in base alla logica del pasto (max 2 per tipo).
+
+DATABASE ALIMENTI DISPONIBILI:
+{foods_context}
+
+Devi restituire UNICAMENTE un output in formato JSON (senza markdown o altro testo) strutturato esattamente così:
+{{
+  "giorni": {{
+    "lunedi": {{
+      "colazione": {{"carboidrati": ["nome_alimento"], "proteine": [...], "grassi": [...], "frutta": [...], "verdura": [...]}},
+      "pranzo": {{...}},
+      "cena": {{...}}
+    }}
+  }}
+}}
+Nota: Includi nel JSON solo i giorni e i pasti che l'utente ti ha chiesto di modificare/generare."""
+
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash', system_instruction=system_instruction)
+        response = model.generate_content(prompt)
+        # Parse output to ensure it's JSON
+        text_response = response.text
+        # Clean potential markdown block formatting from Gemini
+        if text_response.startswith("```json"):
+            text_response = text_response[7:]
+        if text_response.endswith("```"):
+            text_response = text_response[:-3]
+        if text_response.endswith("```\n"):
+            text_response = text_response[:-4]
+            
+        text_response = text_response.strip()
+        
+        # Verify it parses correctly before sending to frontend
+        json_data = json.loads(text_response)
+        return jsonify(json_data)
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     debug = (os.environ.get("FLASK_DEBUG", "0") == "1")

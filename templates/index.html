@@ -1240,6 +1240,11 @@
       </div>
     </a>
 
+    <div class="sidebar-section-header sidebar-action-btn" role="button" tabindex="0" id="btn_ai_planner"
+         style="border-radius:var(--radius); cursor:pointer; background:rgba(234, 179, 8, 0.12); margin-top:8px;">
+      <span class="sidebar-section-title"><span class="icon" style="filter: hue-rotate(-20deg);">🤖</span>AI Nutritional Planner</span>
+    </div>
+
 
 
 
@@ -1537,6 +1542,40 @@
     </div>
   </div>
 </div>
+
+<!-- AI Planner Modal -->
+<div class="modal-overlay" id="aiPlannerModal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="aiPlannerModalTitle">
+  <div class="modal-box" style="max-width:520px; width:92%;">
+    <div class="modal-header">
+      <h2 class="modal-title" id="aiPlannerModalTitle"><span class="icon">🤖</span> AI Nutritional Planner</h2>
+      <button class="modal-close" id="aiPlannerClose" aria-label="Chiudi" style="background:none; border:none; color:var(--text-muted); font-size:24px; cursor:pointer;">&times;</button>
+    </div>
+    <div class="modal-body" style="display:flex; flex-direction:column; gap:16px;">
+      <p style="font-size:14px; color:var(--text-muted);">
+        Chiedi all'AI di generare un pasto o un'intera giornata. Verranno scelti ingredienti dal nostro database.
+      </p>
+      <div class="field-group">
+        <label class="field-label" for="ai_prompt_input">Cosa vuoi mangiare?</label>
+        <textarea class="field-input" id="ai_prompt_input" rows="4" placeholder="Es: Creare una colazione per lunedì senza lattosio e un pranzo gustoso a base di pollo." style="resize:vertical;"></textarea>
+      </div>
+      
+      <div id="ai_loading_indicator" style="display:none; text-align:center; padding:12px;">
+        <div style="display:inline-block; width:24px; height:24px; border:3px solid rgba(255,255,255,0.1); border-top-color:var(--accent); border-radius:50%; animation:spin 1s linear infinite;"></div>
+        <p style="font-size:13px; color:var(--text-muted); margin-top:8px;">L'AI sta analizzando gli alimenti e creando il menu...</p>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end;">
+        <button class="btn-save" type="button" id="btn_ask_ai" style="width:auto; padding:10px 28px; background:var(--accent); color:#000;">
+          ✨ Genera con AI
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes spin { 100% { transform: rotate(360deg); } }
+</style>
 
 <!-- Shopping List Modal -->
 <div class="modal-overlay" id="shoppingListModal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="shoppingListModalTitle">
@@ -2582,12 +2621,99 @@
   document.getElementById('shoppingListClose')?.addEventListener('click', () => closeModal(shoppingModal));
   shoppingModal?.addEventListener('click', e => { if(e.target === shoppingModal) closeModal(shoppingModal); });
 
-  // Escape closes all modals
+  /* ---- AI Planner Logic ---- */
+  const aiModal = document.getElementById('aiPlannerModal');
+  const btnAiPlanner = document.getElementById('btn_ask_ai');
+  const aiPromptInput = document.getElementById('ai_prompt_input');
+  const aiLoadingIndicator = document.getElementById('ai_loading_indicator');
+  const aiModalClose = document.getElementById('aiPlannerClose');
+
+  document.getElementById('btn_ai_planner')?.addEventListener('click', () => {
+    closeSidebar();
+    openModal(aiModal);
+  });
+
+  aiModalClose?.addEventListener('click', () => closeModal(aiModal));
+  aiModal?.addEventListener('click', e => { if (e.target === aiModal) closeModal(aiModal); });
+
+  btnAiPlanner?.addEventListener('click', async () => {
+    const prompt = aiPromptInput.value.trim();
+    if (!prompt) return;
+
+    // Show loading state
+    btnAiPlanner.disabled = true;
+    aiPromptInput.disabled = true;
+    aiLoadingIndicator.style.display = 'block';
+    
+    try {
+      const r = await fetch('/api/generate_plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt })
+      });
+      
+      const data = await r.json();
+      if (!r.ok || data.error) throw new Error(data.error || 'Errore nella generazione');
+
+      let updatedCount = 0;
+      
+      // Il JSON previsto ha la struttura: data.giorni["lunedi"]["colazione"]["carboidrati"] = ["nome"]
+      if (data.giorni) {
+        for (const [day, meals] of Object.entries(data.giorni)) {
+          if (!WEEKLY[day]) continue;
+          
+          for (const [meal, cats] of Object.entries(meals)) {
+            if (!WEEKLY[day][meal]) continue;
+            
+            // Per ogni categoria (carboidrati, proteine, ecc.) sovrascriviamo l'array
+            for (const [cat, items] of Object.entries(cats)) {
+              if (WEEKLY[day][meal][cat] !== undefined) {
+                WEEKLY[day][meal][cat] = Array.isArray(items) ? items : [items];
+                updatedCount++;
+              }
+            }
+            
+            // Se il giorno generato è quello attualmente a schermo, aggiorniamo visivamente i chips
+            if (day === currentDay) {
+              const categories = ['carboidrati', 'proteine', 'grassi', 'frutta', 'verdura'];
+              categories.forEach(cat => {
+                if (cats[cat]) {
+                  const containerId = `chips_${meal}_${cat}`;
+                  const container = document.getElementById(containerId);
+                  if (container) {
+                    // Svuota chips esistenti
+                    container.innerHTML = '';
+                    // Reinserisci con setChips
+                    setChips(meal, cat, WEEKLY[day][meal][cat]);
+                  }
+                }
+              });
+            }
+          }
+        }
+      }
+
+      showToast(updatedCount > 0 ? "Pasti generati dall'AI!" : "L'AI ha risposto, ma non ha modificato i pasti.");
+      closeModal(aiModal);
+      aiPromptInput.value = '';
+
+    } catch (err) {
+      showToast('Errore AI: ' + (err.message || ''), 'error');
+    } finally {
+      // Restore state
+      btnAiPlanner.disabled = false;
+      aiPromptInput.disabled = false;
+      aiLoadingIndicator.style.display = 'none';
+    }
+  });
+
+  // Aggiorna Escape per chiudere anche la modale AI
   document.addEventListener('keydown', e => {
     if(e.key === 'Escape') {
       closeModal(helpModal);
       closeModal(settingsModal);
       closeModal(shoppingModal);
+      closeModal(aiModal);
     }
   });
 
