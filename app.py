@@ -903,7 +903,7 @@ Nota: Includi nel JSON solo i giorni e i pasti che l'utente ti ha chiesto di mod
 
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
-            model='gemini-2.0-flash',
+            model='gemini-2.5-flash-lite',
             contents=prompt,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
