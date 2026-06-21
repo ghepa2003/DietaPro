@@ -1246,18 +1246,13 @@
       <span class="sidebar-section-title"><span class="icon" style="filter: hue-rotate(-20deg);">🤖</span>AI Nutritional Planner</span>
     </div>
     
-    <div class="sidebar-section-header sidebar-action-btn" role="button" tabindex="0" id="btn_weekly_pdf"
-         style="border-radius:var(--radius); cursor:pointer; background:rgba(236, 72, 153, 0.12); margin-top:8px;">
-      <span class="sidebar-section-title"><span class="icon">📥</span>Esporta Settimana PDF</span>
-    </div>
-
-
-
-
-    <!-- Save button -->
-    <div style="display:flex;flex-direction:column;gap:8px;">
+    <!-- Save buttons -->
+    <div style="display:flex;flex-direction:column;gap:12px; margin-top:24px;">
       <button class="btn-save" id="btn_save_state" type="button">
         <span>💾</span> Salva impostazioni
+      </button>
+      <button class="btn-save" id="btn_weekly_pdf" type="button" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+        <span>📥</span> Scarica Dieta PDF
       </button>
       <div class="save-status" id="save_state_status"></div>
     </div>
@@ -2727,6 +2722,23 @@
       showToast('Nessuna lista da esportare!', 'error');
       return;
     }
+    
+    // Cloniamo l'elemento per forzare i colori scuri su sfondo bianco
+    const clone = element.cloneNode(true);
+    const wrapper = document.createElement('div');
+    wrapper.style.padding = '20px';
+    wrapper.style.background = '#ffffff';
+    wrapper.style.color = '#000000';
+    wrapper.style.fontFamily = 'Inter, sans-serif';
+    
+    // Rimuoviamo classi che forzano testo chiaro e settiamo colore scuro
+    clone.querySelectorAll('*').forEach(el => {
+      el.style.color = '#000000';
+      if(el.style.borderColor) el.style.borderColor = '#dddddd';
+    });
+    
+    wrapper.appendChild(clone);
+    
     const opt = {
       margin:       10,
       filename:     'Lista_Spesa_DietaPro.pdf',
@@ -2734,18 +2746,47 @@
       html2canvas:  { scale: 2 },
       jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
-    // Per migliorare il rendering del testo chiaro su sfondo scuro,
-    // diciamo a html2pdf di stampare il contenitore con sfondo scuro
-    html2pdf().set(opt).from(element).save();
+    html2pdf().set(opt).from(wrapper).save();
   });
 
-  document.getElementById('btn_weekly_pdf')?.addEventListener('click', () => {
+  document.getElementById('btn_weekly_pdf')?.addEventListener('click', async () => {
     if (!WEEKLY || Object.keys(WEEKLY).length === 0) {
       showToast('Nessun piano settimanale da esportare!', 'error');
       return;
     }
     
     closeSidebar();
+    showToast('Generazione PDF in corso...', 'info');
+    
+    // Funzione per calcolare i grammi di un singolo giorno
+    const fetchDayGrams = async (day) => {
+      const dayState = WEEKLY[day] || {};
+      if(!dayState.choices) return {day, data: null};
+      const payload = {
+        day: day,
+        calorie_tot: parseFloat(document.getElementById('calorie_tot').value) || 2000,
+        perc_pasti: readPercPasti(),
+        macro_tot: readMacroTot(),
+        locked_macros: readLockedMacros(),
+        choices: dayState.choices || {},
+        fruit_ratios: dayState.fruit_ratios || {},
+        veg_ratios: dayState.veg_ratios || {},
+        food_constraints: dayState.food_constraints || {},
+        splits_per_meal: dayState.splits_per_meal || {},
+        min_grams: parseFloat(document.getElementById('min_grams')?.value || 0)
+      };
+      try {
+        const r = await fetch('/compute_day', {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)});
+        if(!r.ok) return {day, data: null};
+        const res = await r.json();
+        return {day, data: res.results};
+      } catch(e) {
+        return {day, data: null};
+      }
+    };
+    
+    const weekDays = window.WEEK_DAYS || ['lunedi','martedi','mercoledi','giovedi','venerdi','sabato','domenica'];
+    const results = await Promise.all(weekDays.map(d => fetchDayGrams(d)));
     
     // Costruiamo una tabella HTML invisibile per l'esportazione
     const printDiv = document.createElement('div');
@@ -2756,24 +2797,28 @@
     
     let html = `<h1 style="text-align:center; margin-bottom:20px; color:#111827;">Piano Settimanale - DietaPro</h1>`;
     
-    (window.WEEK_DAYS || ['lunedi','martedi','mercoledi','giovedi','venerdi','sabato','domenica']).forEach(day => {
-      if (!WEEKLY[day] || !WEEKLY[day].choices) return;
+    results.forEach(res => {
+      const day = res.day;
+      const dayData = res.data;
+      if (!dayData) return;
+      
       html += `<h2 style="border-bottom:2px solid #22c55e; margin-top:20px; margin-bottom:10px; color:#16a34a; text-transform:capitalize;">${day}</h2>`;
       
       const meals = window.MEALS || ['colazione','spuntino_mattina','pranzo','spuntino_pomeriggio','cena'];
       let hasMeals = false;
       
       meals.forEach(meal => {
-        const c = WEEKLY[day].choices[meal];
-        if (!c) return;
-        const allItems = [...(c.carboidrati||[]), ...(c.proteine||[]), ...(c.grassi||[]), ...(c.frutta||[]), ...(c.verdura||[])];
-        if (allItems.length === 0) return;
+        const mData = dayData[meal];
+        if (!mData || !mData.per_food || mData.per_food.length === 0) return;
         
         hasMeals = true;
         const mealName = meal.replace('_', ' ').toUpperCase();
+        
+        const itemsList = mData.per_food.map(f => `<b>${(f.grammi||0).toFixed(0)}g</b> ${f.nome}`).join(', ');
+        
         html += `<div style="margin-bottom:10px;">
                   <strong style="display:inline-block; width:180px; color:#374151;">${mealName}:</strong>
-                  <span style="color:#4b5563;">${allItems.join(', ')}</span>
+                  <span style="color:#4b5563;">${itemsList}</span>
                  </div>`;
       });
       
