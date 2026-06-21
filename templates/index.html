@@ -1592,8 +1592,8 @@
       <div>
         <button class="btn-save" type="button" id="btn_shopping_refresh"
           style="font-size:13px; padding:8px 16px; width:auto;">🔄 Ricalcola</button>
-        <button class="btn-primary" type="button" id="btn_shopping_pdf"
-          style="font-size:13px; padding:8px 16px; width:auto; margin-left:10px;">📥 Scarica PDF</button>
+        <button class="btn-save" type="button" id="btn_shopping_pdf"
+          style="font-size:13px; padding:8px 16px; width:auto; margin-left:10px; background: linear-gradient(135deg, #10b981 0%, #059669 100%);">📥 Scarica PDF</button>
       </div>
       <button class="btn-modal-close" id="shoppingListClose" type="button">Chiudi</button>
     </div>
@@ -1619,7 +1619,10 @@
     const t = document.getElementById('toast');
     const icon = document.getElementById('toast-icon');
     const msgEl = document.getElementById('toast-msg');
-    icon.textContent = type === 'success' ? '✅' : '❌';
+    if (type === 'success') icon.textContent = '✓';
+    else if (type === 'error') icon.textContent = '✖';
+    else if (type === 'info') icon.textContent = '⏳';
+    else icon.textContent = '💬';
     msgEl.textContent = msg;
     t.className = 'toast ' + type;
     clearTimeout(t._tid);
