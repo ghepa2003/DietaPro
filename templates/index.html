@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1244,6 +1245,11 @@
          style="border-radius:var(--radius); cursor:pointer; background:rgba(234, 179, 8, 0.12); margin-top:8px;">
       <span class="sidebar-section-title"><span class="icon" style="filter: hue-rotate(-20deg);">🤖</span>AI Nutritional Planner</span>
     </div>
+    
+    <div class="sidebar-section-header sidebar-action-btn" role="button" tabindex="0" id="btn_weekly_pdf"
+         style="border-radius:var(--radius); cursor:pointer; background:rgba(236, 72, 153, 0.12); margin-top:8px;">
+      <span class="sidebar-section-title"><span class="icon">📥</span>Esporta Settimana PDF</span>
+    </div>
 
 
 
@@ -1588,8 +1594,12 @@
       <div id="shoppingListResults"></div>
     </div>
     <div class="modal-close" style="margin-top:16px; display:flex; gap:10px; justify-content:space-between; align-items:center;">
-      <button class="btn-save" type="button" id="btn_shopping_refresh"
-        style="font-size:13px; padding:8px 16px; width:auto;">🔄 Ricalcola</button>
+      <div>
+        <button class="btn-save" type="button" id="btn_shopping_refresh"
+          style="font-size:13px; padding:8px 16px; width:auto;">🔄 Ricalcola</button>
+        <button class="btn-primary" type="button" id="btn_shopping_pdf"
+          style="font-size:13px; padding:8px 16px; width:auto; margin-left:10px;">📥 Scarica PDF</button>
+      </div>
       <button class="btn-modal-close" id="shoppingListClose" type="button">Chiudi</button>
     </div>
   </div>
@@ -2708,6 +2718,81 @@
       closeModal(shoppingModal);
       closeModal(aiModal);
     }
+  });
+
+  /* ---- PDF Export Logic ---- */
+  document.getElementById('btn_shopping_pdf')?.addEventListener('click', () => {
+    const element = document.getElementById('shoppingListResults');
+    if(!element || element.innerHTML.trim() === '') {
+      showToast('Nessuna lista da esportare!', 'error');
+      return;
+    }
+    const opt = {
+      margin:       10,
+      filename:     'Lista_Spesa_DietaPro.pdf',
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2 },
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    // Per migliorare il rendering del testo chiaro su sfondo scuro,
+    // diciamo a html2pdf di stampare il contenitore con sfondo scuro
+    html2pdf().set(opt).from(element).save();
+  });
+
+  document.getElementById('btn_weekly_pdf')?.addEventListener('click', () => {
+    if (!WEEKLY || Object.keys(WEEKLY).length === 0) {
+      showToast('Nessun piano settimanale da esportare!', 'error');
+      return;
+    }
+    
+    closeSidebar();
+    
+    // Costruiamo una tabella HTML invisibile per l'esportazione
+    const printDiv = document.createElement('div');
+    printDiv.style.padding = '20px';
+    printDiv.style.fontFamily = 'Inter, sans-serif';
+    printDiv.style.color = '#000';
+    printDiv.style.background = '#fff';
+    
+    let html = `<h1 style="text-align:center; margin-bottom:20px; color:#111827;">Piano Settimanale - DietaPro</h1>`;
+    
+    (window.WEEK_DAYS || ['lunedi','martedi','mercoledi','giovedi','venerdi','sabato','domenica']).forEach(day => {
+      if (!WEEKLY[day] || !WEEKLY[day].choices) return;
+      html += `<h2 style="border-bottom:2px solid #22c55e; margin-top:20px; margin-bottom:10px; color:#16a34a; text-transform:capitalize;">${day}</h2>`;
+      
+      const meals = window.MEALS || ['colazione','spuntino_mattina','pranzo','spuntino_pomeriggio','cena'];
+      let hasMeals = false;
+      
+      meals.forEach(meal => {
+        const c = WEEKLY[day].choices[meal];
+        if (!c) return;
+        const allItems = [...(c.carboidrati||[]), ...(c.proteine||[]), ...(c.grassi||[]), ...(c.frutta||[]), ...(c.verdura||[])];
+        if (allItems.length === 0) return;
+        
+        hasMeals = true;
+        const mealName = meal.replace('_', ' ').toUpperCase();
+        html += `<div style="margin-bottom:10px;">
+                  <strong style="display:inline-block; width:180px; color:#374151;">${mealName}:</strong>
+                  <span style="color:#4b5563;">${allItems.join(', ')}</span>
+                 </div>`;
+      });
+      
+      if (!hasMeals) {
+        html += `<p style="color:#9ca3af; font-style:italic; font-size:14px;">Nessun pasto pianificato.</p>`;
+      }
+    });
+    
+    printDiv.innerHTML = html;
+    
+    const opt = {
+      margin:       15,
+      filename:     'Piano_Settimanale_DietaPro.pdf',
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2 },
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    
+    html2pdf().set(opt).from(printDiv).save();
   });
 
 })();
